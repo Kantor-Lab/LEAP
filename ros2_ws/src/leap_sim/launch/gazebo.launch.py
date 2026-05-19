@@ -15,6 +15,8 @@ def generate_launch_description():
 
     world_path = os.path.join(pkg_leap_sim, 'worlds', 'tree_rows.world')
     models_path = os.path.join(pkg_leap_sim, 'models')
+
+    sim_urdf_path = os.path.join(pkg_leap_sim, 'urdf', 'amiga_sim.xacro')
     
     set_env_vars_resources = AppendEnvironmentVariable(
         'GZ_SIM_RESOURCE_PATH',
@@ -40,7 +42,10 @@ def generate_launch_description():
         PythonLaunchDescriptionSource(
             os.path.join(pkg_leap_desc, 'launch', 'rsp.launch.py')
         ),
-        launch_arguments={'use_sim_time': 'true'}.items()
+        launch_arguments={
+            'use_sim_time': 'true',
+            'urdf_file': sim_urdf_path  # Overrides the default hardware-only URDF
+        }.items()
     )
 
     # Spawn the robot in Gazebo

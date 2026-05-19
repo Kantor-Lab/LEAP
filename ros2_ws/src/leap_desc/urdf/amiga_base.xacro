@@ -1,0 +1,211 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="amiga_base" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- base_link -->
+  <link name="base_link">
+    <inertial>
+      <origin xyz="-0.054481 -0.015972 0.66252" rpy="0 0 0" />
+      <mass value="381.19" />
+      <inertia ixx="5.717" ixy="-0.007109" ixz="0.0013622" iyy="12.857" iyz="1.2354E-05" izz="11.799" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="file://$(find leap_desc)/meshes/frame_link.STL" />
+      </geometry>
+      <material name=""><color rgba="0.118 0.506 0.729 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="file://$(find leap_desc)/meshes/frame_collision.STL"  />
+      </geometry>
+    </collision>
+  </link>
+
+  <!-- base_footprint is used with Nav2 -->
+  <link name="base_footprint" />
+  <joint name="dummy_joint" type="fixed" >
+    <parent link="base_link" />
+    <child link="base_footprint" />
+  </joint>
+
+  <!-- FL_wheel -->
+  <link name="FL_wheel">
+    <inertial>
+      <origin xyz="4.3098E-07 5.5068E-07 -0.00020749" rpy="0 0 0" />
+      <mass value="15.628" />
+      <inertia ixx="0.153" ixy="1.1085E-06" ixz="2.7485E-07" iyy="0.153" iyz="2.341E-07" izz="0.28441" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="file://$(find leap_desc)/meshes/wheel.STL" />
+      </geometry>
+      <material name=""><color rgba="0 0 0 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="file://$(find leap_desc)/meshes/wheel_collision.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="FL_wheel_j" type="continuous">
+    <origin xyz="0.2658 0.32928 0.2159" rpy="1.5708 0 3.1416" />
+    <parent link="base_link" />
+    <child link="FL_wheel" />
+    <axis xyz="0 0 1" />
+  </joint>
+
+  <!-- FR_wheel -->
+  <link name="FR_wheel">
+    <inertial>
+      <origin xyz="4.3153E-07 5.4433E-07 -0.00020748" rpy="0 0 0" />
+      <mass value="15.628" />
+      <inertia ixx="0.153" ixy="1.1081E-06" ixz="2.8146E-07" iyy="0.153" iyz="2.3106E-07" izz="0.28441" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="file://$(find leap_desc)/meshes/wheel.STL" />
+      </geometry>
+      <material name=""><color rgba="0 0 0 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="file://$(find leap_desc)/meshes/wheel_collision.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="FR_wheel_j" type="continuous">
+    <origin xyz="0.2658 -0.32928 0.2159" rpy="1.5708 0 3.1416" />
+    <parent link="base_link" />
+    <child link="FR_wheel" />
+    <axis xyz="0 0 1" />
+  </joint>
+
+  <!-- RL_wheel -->
+  <link name="RL_wheel">
+    <inertial>
+      <origin xyz="4.2324E-07 5.6831E-07 -0.00020749" rpy="0 0 0" />
+      <mass value="15.628" />
+      <inertia ixx="0.153" ixy="1.0985E-06" ixz="2.7036E-07" iyy="0.153" iyz="2.4709E-07" izz="0.28441" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="file://$(find leap_desc)/meshes/wheel.STL" />
+      </geometry>
+      <material name=""><color rgba="0 0 0 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="file://$(find leap_desc)/meshes/wheel_collision.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="RL_wheel_j" type="continuous">
+    <origin xyz="-0.2658 0.32928 0.2159" rpy="1.5708 0 3.1416" />
+    <parent link="base_link" />
+    <child link="RL_wheel" />
+    <axis xyz="0 0 1" />
+  </joint>
+
+  <!-- RR_wheel -->
+  <link name="RR_wheel">
+    <inertial>
+      <origin xyz="4.3464E-07 5.6185E-07 -0.00020748" rpy="0 0 0" />
+      <mass value="15.628" />
+      <inertia ixx="0.153" ixy="1.11E-06" ixz="2.6707E-07" iyy="0.153" iyz="2.4203E-07" izz="0.28441" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="file://$(find leap_desc)/meshes/wheel.STL" />
+      </geometry>
+      <material name=""><color rgba="0 0 0 1" /></material>
+    </visual>
+    <collision>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="file://$(find leap_desc)/meshes/wheel_collision.STL" />
+      </geometry>
+    </collision>
+  </link>
+  <joint name="RR_wheel_j" type="continuous">
+    <origin xyz="-0.2658 -0.32928 0.2159" rpy="1.5708 0 3.1416" />
+    <parent link="base_link" />
+    <child link="RR_wheel" />
+    <axis xyz="0 0 1" />
+  </joint>
+
+  <!-- front_camera_hinge -->
+  <link name="front_camera_hinge"> 
+    <inertial>
+      <origin xyz="0.072808 -0.032484 -0.00017047" rpy="0 0 0" />
+      <mass value="0.21875" />
+      <inertia ixx="0.00029961" ixy="4.6954E-06" ixz="-3.6958E-07" iyy="0.00033063" iyz="2.5824E-07" izz="7.9946E-05" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="file://$(find leap_desc)/meshes/camera.STL" />
+      </geometry>
+      <material name=""><color rgba="1 0 0 1" /></material>
+    </visual>
+  </link>
+  <joint name="front_camera_hinge_j" type="fixed">
+    <origin xyz="1.1572 0.18502 1.1633" rpy="1.5708 -0.523599 0" /> 
+    <parent link="base_link" />
+    <child link="front_camera_hinge" />
+  </joint>
+
+  <!-- front_camera -->
+  <link name="front_camera"></link>
+  <joint name="front_camera_j" type="fixed">
+    <origin xyz="0.10238 -0.077341 0.0001016" rpy="-1.5708 0 -0.82903" /> 
+    <parent link="front_camera_hinge" />
+    <child link="front_camera" />
+  </joint>
+
+  <!-- front_camera_optical -->
+  <link name="front_camera_optical"></link>
+  <joint name="front_camera_optical_j" type="fixed">
+    <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708" /> 
+    <parent link="front_camera" />
+    <child link="front_camera_optical" />
+  </joint>
+
+  <!-- lidar_hinge -->
+  <link name="lidar_hinge"> 
+    <inertial>
+      <origin xyz="0.12957 -0.043305 -0.00024862" rpy="0 0 0" />
+      <mass value="5.5092" />
+      <inertia ixx="0.0061651" ixy="0.0013206" ixz="-1.4672E-06" iyy="0.0076386" iyz="1.274E-06" izz="0.0071961" />
+    </inertial>
+    <visual>
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <geometry>
+        <mesh filename="file://$(find leap_desc)/meshes/lidar.STL" />
+      </geometry>
+      <material name=""><color rgba="0 1 0 1" /></material>
+    </visual>
+  </link>
+  <joint name="lidar_hinge_j" type="fixed">
+    <origin xyz="1.1572 0.18502 1.449" rpy="1.5708 -0.4363 0" /> 
+    <parent link="base_link" />
+    <child link="lidar_hinge" />
+  </joint>
+
+  <!-- lidar -->
+  <link name="lidar"></link>
+  <joint name="lidar_j" type="fixed">
+    <origin xyz="0.14354 -0.042185 0" rpy="-1.5708 0 -0.43633" /> 
+    <parent link="lidar_hinge" />
+    <child link="lidar" />
+  </joint>
+
+</robot>

@@ -19,15 +19,20 @@ def generate_launch_description():
         description='Use simulation (Gazebo) clock if true'
     )
 
-    # We can directly use the xacro file instead of having to generate the urdf first
-    robot_xacro_path = os.path.join(pkg_leap_desc, 'urdf', 'top_level_amiga.urdf.xacro')
-    robot_desc = ParameterValue(
-        Command([FindExecutable(name='xacro'), ' ', robot_xacro_path]),
-        value_type=str
+    # A default hardware-only URDF file that can be overriden, e.g. if Gazebo
+    #   plugins are needed for simulation 
+    default_urdf = os.path.join(pkg_leap_desc, 'urdf', 'amiga_base.xacro')
+    urdf_file = LaunchConfiguration('urdf_file')
+    declare_urdf_file = DeclareLaunchArgument(
+        'urdf_file',
+        default_value=default_urdf,
+        description='Path to the top-level URDF/Xacro file'
     )
-    # robot_urdf_path = os.path.join(pkg_leap_sim, 'urdf', 'top_level_amiga.urdf')
-    # with open(robot_urdf_path, 'r') as infp:
-    #     robot_desc = infp.read()
+    # Generate the robot description by processing the Xacro file
+    robot_desc = ParameterValue(
+        Command([FindExecutable(name='xacro'), ' ', urdf_file]),
+        value_type=str  # Ensure that the result is treated as a string
+    )
 
     # Publish the robot state to the /tf topic
     robot_state_publisher = Node(

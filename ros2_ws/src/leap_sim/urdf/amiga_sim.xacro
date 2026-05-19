@@ -1,0 +1,109 @@
+<?xml version="1.0" encoding="utf-8"?>
+<robot name="amiga_sim" xmlns:xacro="http://www.ros.org/wiki/xacro">
+
+  <!-- Import the pure hardware URDF -->
+  <xacro:include filename="$(find leap_desc)/urdf/amiga_base.xacro" />
+
+  <!-- Gazebo Camera Sensor -->
+  <gazebo reference="front_camera">
+    <sensor name="camera" type="camera">
+      <camera>
+        <camera_info_topic>camera/camera_info</camera_info_topic>
+        <horizontal_fov>1.047</horizontal_fov>
+        <image>
+          <width>320</width>
+          <height>240</height>
+        </image>
+        <clip>
+          <near>0.1</near>
+          <far>100</far>
+        </clip>
+      </camera>
+      <always_on>1</always_on>
+      <update_rate>10</update_rate>
+      <visualize>true</visualize>
+      <topic>camera/image_raw</topic>
+      <gz_frame_id>front_camera_optical</gz_frame_id>
+    </sensor>
+  </gazebo>
+
+  <!-- Gazebo LiDAR Sensor -->
+  <gazebo reference="lidar">
+    <sensor name='gpu_lidar' type='gpu_lidar'>
+      <pose>0 0 0 0 0 0</pose>
+      <topic>scan</topic>
+      <update_rate>10</update_rate>
+      <ray>
+        <scan>
+          <horizontal>
+            <samples>640</samples>
+            <resolution>1</resolution>
+            <min_angle>-1.396263</min_angle>
+            <max_angle>1.396263</max_angle>
+          </horizontal>
+          <vertical>
+            <samples>15</samples>
+            <resolution>1</resolution>
+            <min_angle>-0.2618</min_angle>
+            <max_angle>0.2618</max_angle>
+          </vertical>
+        </scan>
+        <range>
+          <min>0.08</min>
+          <max>10.0</max>
+          <resolution>0.01</resolution>
+        </range>
+      </ray>
+      <always_on>1</always_on>
+      <visualize>true</visualize>
+      <gz_frame_id>lidar</gz_frame_id>
+    </sensor>
+  </gazebo>
+
+  <!-- Untested IMU / GPS placeholders -->
+  <!-- 
+  <gazebo reference="imu">
+    <sensor name="imu_sensor" type="imu">... </sensor>
+  </gazebo>
+  <gazebo reference="gps">
+    <sensor name="navsat" type="navsat">... </sensor>
+  </gazebo> 
+  -->
+
+  <!-- Gazebo ros2_control Hardware Interface -->
+  <!-- Since the real robot uses a CAN black box, this is only needed in simulation -->
+  <ros2_control name="IgnitionSystemTest" type="system">
+    <hardware>
+      <plugin>ign_ros2_control/IgnitionSystem</plugin>
+    </hardware>
+    <joint name="FL_wheel_j">
+      <command_interface name="velocity" />
+      <state_interface name="velocity"/>
+      <state_interface name="position"/>
+    </joint>
+    <joint name="FR_wheel_j">
+      <command_interface name="velocity" />
+      <state_interface name="velocity"/>
+      <state_interface name="position"/>
+    </joint>
+    <joint name="RL_wheel_j">
+      <command_interface name="velocity" />
+      <state_interface name="velocity"/>
+      <state_interface name="position"/>
+    </joint>
+    <joint name="RR_wheel_j">
+      <command_interface name="velocity" />
+      <state_interface name="velocity"/>
+      <state_interface name="position"/>
+    </joint>
+  </ros2_control>
+
+  <!-- Gazebo ros2_control Plugin -->
+  <!-- Points directly to the YAML file in the leap_sim package -->
+  <gazebo>
+    <plugin filename="ign_ros2_control-system" name="ign_ros2_control::IgnitionROS2ControlPlugin">
+      <parameters>$(find leap_sim)/config/diff_controller.yaml</parameters>
+    </plugin>
+  </gazebo>
+
+</robot>
