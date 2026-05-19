@@ -7,7 +7,7 @@
   xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <!-- <mesh filename="file://$(find diff_drive_bot)/meshes/body.stl" /> -->
-<!-- filename="package://leap_sim/meshes/base_link.STL" -->
+<!-- filename="package://leap_desc/meshes/base_link.STL" -->
 
 <!-- base_link or frame_link? -->
 
@@ -33,7 +33,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="file://$(find leap_sim)/meshes/frame_link.STL" />
+          filename="file://$(find leap_desc)/meshes/frame_link.STL" />
       </geometry>
       <material
         name="">
@@ -47,7 +47,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="file://$(find leap_sim)/meshes/frame_collision.STL"  />
+          filename="file://$(find leap_desc)/meshes/frame_collision.STL"  />
       </geometry>
     </collision>
   </link>
@@ -82,7 +82,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="file://$(find leap_sim)/meshes/wheel.STL" />
+          filename="file://$(find leap_desc)/meshes/wheel.STL" />
       </geometry>
       <material
         name="">
@@ -96,7 +96,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="file://$(find leap_sim)/meshes/wheel_collision.STL" />
+          filename="file://$(find leap_desc)/meshes/wheel_collision.STL" />
       </geometry>
       <surface>
         <friction>
@@ -145,7 +145,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="file://$(find leap_sim)/meshes/wheel.STL" />
+          filename="file://$(find leap_desc)/meshes/wheel.STL" />
       </geometry>
       <material
         name="">
@@ -159,7 +159,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="file://$(find leap_sim)/meshes/wheel_collision.STL" />
+          filename="file://$(find leap_desc)/meshes/wheel_collision.STL" />
       </geometry>
       <surface>
         <friction>
@@ -208,7 +208,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="file://$(find leap_sim)/meshes/wheel.STL" />
+          filename="file://$(find leap_desc)/meshes/wheel.STL" />
       </geometry>
       <material
         name="">
@@ -222,7 +222,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="file://$(find leap_sim)/meshes/wheel_collision.STL" />
+          filename="file://$(find leap_desc)/meshes/wheel_collision.STL" />
       </geometry>
       <surface>
         <friction>
@@ -271,7 +271,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="file://$(find leap_sim)/meshes/wheel.STL" />
+          filename="file://$(find leap_desc)/meshes/wheel.STL" />
       </geometry>
       <material
         name="">
@@ -285,7 +285,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="file://$(find leap_sim)/meshes/wheel_collision.STL" />
+          filename="file://$(find leap_desc)/meshes/wheel_collision.STL" />
       </geometry>
       <surface>
         <friction>
@@ -335,7 +335,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="file://$(find leap_sim)/meshes/camera.STL" />
+          filename="file://$(find leap_desc)/meshes/camera.STL" />
       </geometry>
       <material
         name="">
@@ -417,7 +417,7 @@
         rpy="0 0 0" />
       <geometry>
         <mesh
-          filename="file://$(find leap_sim)/meshes/lidar.STL" />
+          filename="file://$(find leap_desc)/meshes/lidar.STL" />
       </geometry>
       <material
         name="">
@@ -585,7 +585,7 @@ per: https://robotics.stackexchange.com/questions/29352/gps-sensor-plugin-in-ign
   <gazebo>
     <!-- <plugin filename="libgz_ros2_control-system.so" name="gz_ros2_control::GazeboSimROS2ControlPlugin"> -->
     <plugin filename="ign_ros2_control-system" name="ign_ros2_control::IgnitionROS2ControlPlugin">
-      <parameters>$(find leap_sim)/config/diff_controller.yaml</parameters>
+      <parameters>$(find leap_desc)/config/diff_controller.yaml</parameters>
     </plugin>
   </gazebo>
 

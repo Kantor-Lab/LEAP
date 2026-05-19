@@ -9,8 +9,6 @@ leap_sim/
 ├── CMakeLists.txt
 ├── package.xml
 ├── launch/
-├── urdf/
-├── meshes/
 ├── models/
 └── worlds/
 ```
@@ -19,10 +17,6 @@ leap_sim/
 
 *   **`launch/`**
     Contains the launch files. `gazebo.launch.py` is the main entry point.
-*   **`urdf/`**
-    Contains the descriptions of the robot. Xacro files are directly used now, but some corresponding urdf files may also exist (albeit out of date).
-*   **`meshes/`**
-    Contains the 3D visual and collision meshes,  for the robots. It it is primarily referred to by files in the `urdf\` directory.
 *   **`models/`**
     Contains the 3D visual and collision meshes, materials, and specific `.sdf` configurations for environmental props. This includes all the assets required to render the trees, ground planes, or obstacles used in the simulation.
 *   **`worlds/`**
@@ -44,7 +38,3 @@ To launch the standalone simulation world:
 ```bash
 ros2 launch leap_sim gazebo_sim.launch.py
 ```
-
-## Developer Notes
-
-*   **Organization:** This package should only handle simulation-specific code. That means the `urdf\` and `meshes\` folder should eventually be moved out of this package.

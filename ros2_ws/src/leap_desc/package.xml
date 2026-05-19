@@ -1,9 +1,9 @@
 <?xml version="1.0"?>
 <?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
 <package format="3">
-  <name>leap_sim</name>
+  <name>leap_desc</name>
   <version>0.0.0</version>
-  <description>Gazebo simulator</description>
+  <description>Handles the robot description (e.g. robot state publisher)</description>
   <maintainer email="atharvgo@andrew.cmu.edu">atharvgoel</maintainer>
   <license>Apache-2.0</license>
 
@@ -12,9 +12,8 @@
   <test_depend>ament_lint_auto</test_depend>
   <test_depend>ament_lint_common</test_depend>
 
-  <exec_depend>ros_gz_sim</exec_depend>
-  <exec_depend>ros_gz_bridge</exec_depend>
-  <exec_depend>leap_desc</exec_depend>
+  <exec_depend>robot_state_publisher</exec_depend>
+  <exec_depend>xacro</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>

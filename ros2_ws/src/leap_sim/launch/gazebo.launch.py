@@ -10,22 +10,11 @@ from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     pkg_leap_sim = get_package_share_directory('leap_sim')
+    pkg_leap_desc = get_package_share_directory('leap_desc')
     pkg_ros_gz_sim = get_package_share_directory('ros_gz_sim')
 
     world_path = os.path.join(pkg_leap_sim, 'worlds', 'tree_rows.world')
     models_path = os.path.join(pkg_leap_sim, 'models')
-
-    # We can directly use the xacro file instead of having to generate the urdf first
-    robot_xacro_path = os.path.join(pkg_leap_sim, 'urdf', 'top_level_amiga.urdf.xacro')
-    robot_desc = ParameterValue(
-        Command([
-            FindExecutable(name='xacro'), ' ', robot_xacro_path
-        ]),
-        value_type=str # Ensure the result is treated as a string
-    )
-    # robot_urdf_path = os.path.join(pkg_leap_sim, 'urdf', 'top_level_amiga.urdf')
-    # with open(robot_urdf_path, 'r') as infp:
-    #     robot_desc = infp.read()
     
     set_env_vars_resources = AppendEnvironmentVariable(
         'GZ_SIM_RESOURCE_PATH',
@@ -45,16 +34,13 @@ def generate_launch_description():
         }.items()
     )
 
-    # Publish the robot state to the /tf topic
-    robot_state_publisher = Node(
-        package='robot_state_publisher',
-        executable='robot_state_publisher',
-        name='robot_state_publisher',
-        output='both',
-        parameters=[
-            {'use_sim_time': True},
-            {'robot_description': robot_desc},
-        ]
+    # Launch the robot state publisher to publish the robot's state to the /tf
+    #   topic via the leap_desc package
+    rsp_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(
+            os.path.join(pkg_leap_desc, 'launch', 'rsp.launch.py')
+        ),
+        launch_arguments={'use_sim_time': 'true'}.items()
     )
 
     # Spawn the robot in Gazebo
@@ -81,7 +67,7 @@ def generate_launch_description():
     ld = LaunchDescription()
     ld.add_action(set_env_vars_resources)
     ld.add_action(gzserver_cmd)
-    ld.add_action(robot_state_publisher)
+    ld.add_action(rsp_launch)
     ld.add_action(spawn_robot)
     ld.add_action(clock_bridge)
 
