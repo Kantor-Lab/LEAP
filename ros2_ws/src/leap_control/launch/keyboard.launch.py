@@ -9,12 +9,15 @@ separate terminal, you can use the ros2 run command above.
 
 import os
 
+from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
+from launch.launch_description_sources import PythonLaunchDescriptionSource
 
 def generate_launch_description():
+    pkg_leap_control = get_package_share_directory('leap_control')
 
     # Use_sim_time argument so that we can switch between real time (on the real
     #   robot) and simulation time (in Gazebo)
@@ -47,6 +50,7 @@ def generate_launch_description():
     ld = LaunchDescription()
     
     ld.add_action(declare_use_sim_time)
+    ld.add_action(teleop_launch)
     ld.add_action(keyboard_node)
 
     return ld
