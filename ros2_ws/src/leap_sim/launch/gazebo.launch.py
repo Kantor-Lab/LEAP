@@ -69,11 +69,30 @@ def generate_launch_description():
         output='screen'
     )
 
+    # Reads the wheel positions from Gazebo and publishes them to /joint_states
+    #   so the robot_state_publisher knows exactly where the wheels are pointing
+    load_joint_state_broadcaster = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["joint_broad"],
+        output="screen",
+    )
+
+    # Listens to /diff_controller/cmd_vel_unstamped and actually spins the wheels
+    load_diff_drive_controller = Node(
+        package="controller_manager",
+        executable="spawner",
+        arguments=["diff_controller"],
+        output="screen",
+    )
+
     ld = LaunchDescription()
     ld.add_action(set_env_vars_resources)
     ld.add_action(gzserver_cmd)
     ld.add_action(rsp_launch)
     ld.add_action(spawn_robot)
     ld.add_action(clock_bridge)
+    ld.add_action(load_joint_state_broadcaster)
+    ld.add_action(load_diff_drive_controller)
 
     return ld
