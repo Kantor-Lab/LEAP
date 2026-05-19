@@ -1,0 +1,44 @@
+<?xml version="1.0" ?>
+<sdf version="1.5">
+  <model name="driveway_plane">
+    <static>true</static>
+    <link name="link">
+      <collision name="collision">
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <size>40 2.2 </size>
+          </plane>
+        </geometry>
+        <surface>
+          <friction>
+            <ode>
+              <mu>1</mu>
+              <mu2>1</mu2>
+            </ode>
+          </friction>
+        </surface>
+      </collision>
+      <visual name="visual">
+        <cast_shadows>false</cast_shadows>
+        <geometry>
+          <plane>
+            <normal>0 0 1</normal>
+            <!-- <size>40 2.2</size> -->
+            <size>40 3.8</size>
+          </plane>
+        </geometry>
+        <material>
+            <ambient>0.55 0.27 0.07 1</ambient> <!-- brown-->
+            <diffuse>0.55 0.27 0.07 1</diffuse>
+            <specular>0 0 0 0</specular>
+            <emissive>0 0 0 1</emissive>
+          <!-- <script>
+            <uri>file://media/materials/scripts/gazebo.material</uri>
+            <name>Gazebo/Grey</name>
+          </script> -->
+        </material>
+      </visual>
+    </link>
+  </model>
+</sdf>

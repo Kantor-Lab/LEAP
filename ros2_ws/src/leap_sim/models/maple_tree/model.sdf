@@ -1,0 +1,31 @@
+<?xml version= "1.0" ?>
+<sdf version= "1.5">
+	<model name= "maple_tree">
+		<static>true</static>
+		<link name= "tree" >
+			<!-- <collision name = "collision">
+				<geometry>
+					<mesh>
+						<uri>model://nursery_field_test/meshes/field_test.dae</uri>
+					</mesh>
+				</geometry>
+			</collision> -->
+			<visual name= "visual">
+				<geometry>
+					<mesh>
+						<uri>model://maple_tree/meshes/potted_maple_tree17.dae</uri>
+					</mesh>
+					<!-- <box>
+						<size> 1 1 1 </size>
+					</box> -->
+				</geometry>
+				<!-- <material>
+					<script>
+						<uri>file://media/materials/scripts/gazebo.material</uri>
+						<name>Gazebo/Green </name>
+					</script>
+				</material> -->
+			</visual>
+		</link>
+	</model>
+</sdf>
