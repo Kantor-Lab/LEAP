@@ -14,8 +14,10 @@
 
   <exec_depend>ros_gz_sim</exec_depend>
   <exec_depend>ros_gz_bridge</exec_depend>
+  <exec_depend>ros_gz_image</exec_depend>
   <exec_depend>controller_manager</exec_depend>
   <exec_depend>leap_desc</exec_depend>
+  <exec_depend>leap_control</exec_depend>
 
   <export>
     <build_type>ament_cmake</build_type>
