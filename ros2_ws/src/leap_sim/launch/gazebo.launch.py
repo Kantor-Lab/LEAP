@@ -1,13 +1,9 @@
 import os
-
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import AppendEnvironmentVariable, IncludeLaunchDescription, DeclareLaunchArgument
-from launch.conditions import IfCondition
+from launch.actions import AppendEnvironmentVariable, IncludeLaunchDescription
 from launch.launch_description_sources import PythonLaunchDescriptionSource
-from launch.substitutions import Command, FindExecutable, LaunchConfiguration
 from launch_ros.actions import Node
-from launch_ros.parameter_descriptions import ParameterValue
 
 def generate_launch_description():
     pkg_leap_sim = get_package_share_directory('leap_sim')
@@ -17,19 +13,10 @@ def generate_launch_description():
     world_path = os.path.join(pkg_leap_sim, 'worlds', 'tree_rows.world')
     models_path = os.path.join(pkg_leap_sim, 'models')
     sim_urdf_path = os.path.join(pkg_leap_sim, 'urdf', 'amiga_sim.xacro')
-    rviz_config_path = os.path.join(pkg_leap_sim, 'rviz', 'amiga_config.rviz')
-    ekf_config_path = os.path.join(pkg_leap_sim, 'config', 'ekf_config.yaml')
-    
+
     set_env_vars_resources = AppendEnvironmentVariable(
         'GZ_SIM_RESOURCE_PATH',
         models_path
-    )
-
-    # Whether to open RViz or not
-    open_rviz = DeclareLaunchArgument(
-        'open_rviz', 
-        default_value='true', 
-        description='Open RViz.'
     )
 
     # Launch the gazebo server with the specified world
@@ -76,7 +63,11 @@ def generate_launch_description():
         executable='parameter_bridge',
         arguments=[
             '/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock',
-            '/scan@sensor_msgs/msg/LaserScan[ignition.msgs.LaserScan'
+            '/scan@sensor_msgs/msg/LaserScan[ignition.msgs.LaserScan',
+            '/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked',
+            '/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
+            '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
+            '/gps/fix@sensor_msgs/msg/NavSatFix[gz.msgs.NavSat'
         ],
         output='screen'
     )
@@ -88,7 +79,7 @@ def generate_launch_description():
         package='ros_gz_image',
         executable='image_bridge',
         arguments=['/camera/image_raw'],
-        parameters=[{'use_sim_time': LaunchConfiguration('use_sim_time')}],
+        parameters=[{'use_sim_time': True}],
         output='screen'
     )
 
@@ -109,26 +100,6 @@ def generate_launch_description():
         output="screen",
     )
 
-    # RViz visualization of the robot and its sensors
-    rviz_launch = Node(
-       package='rviz2',
-       executable='rviz2',
-       arguments=['-d', rviz_config_path],
-       output='screen',
-       parameters=[{'use_sim_time' : True}],
-       condition=IfCondition(LaunchConfiguration('open_rviz'))
-    )
-
-    # EKF node to fuse the wheel odometry and IMU data to get a better estimate of 
-    #   the robot's pose
-    robot_localization = Node(
-        package='robot_localization',
-        executable='ekf_node',
-        name='ekf_filter_node',
-        parameters=[ekf_config_path, {'use_sim_time' : True}],
-        output='screen'
-    )
-
     ld = LaunchDescription()
     ld.add_action(set_env_vars_resources)
     ld.add_action(gzserver_launch)
@@ -138,8 +109,5 @@ def generate_launch_description():
     ld.add_action(image_bridge)
     ld.add_action(load_joint_state_broadcaster)
     ld.add_action(load_diff_drive_controller)
-    ld.add_action(open_rviz)
-    ld.add_action(rviz_launch)
-    ld.add_action(robot_localization)
 
     return ld
