@@ -21,7 +21,7 @@ def generate_launch_description():
     # Launch localization within the simulator
     localization_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(pkg_leap_control, 'launch', 'sim_localization.launch.py')
+            os.path.join(pkg_leap_control, 'launch', 'ros2-lidar-odometry.launch.py')
         ),
         launch_arguments={'use_sim_time': 'true'}.items()
     )
@@ -38,6 +38,6 @@ def generate_launch_description():
     ld = LaunchDescription()
     ld.add_action(gazebo_launch)
     ld.add_action(localization_launch)
-    ld.add_action(rviz_launch)
+    # ld.add_action(rviz_launch)
 
     return ld
