@@ -35,20 +35,19 @@
       <update_rate>10</update_rate>
       <ray>
         <scan>
-          <!-- OS0 True Horizontal: 360 degrees (2*pi) -->
+          <!-- OS0 True Horizontal: 360 degrees -->
           <horizontal>
             <samples>1024</samples>
             <resolution>1</resolution>
             <min_angle>-3.14159</min_angle>
             <max_angle>3.14159</max_angle>
           </horizontal>
-          
-          <!-- OS0 True Vertical flattened to 1 layer for 2D Nav2 -->
+          <!-- OS0 True Vertical: 45 degrees (will be flattened to 1 layer for 2D Nav2) -->
           <vertical>
-            <samples>1</samples>
+            <samples>64</samples>
             <resolution>1</resolution>
-            <min_angle>0.0</min_angle>
-            <max_angle>0.0</max_angle>
+            <min_angle>-0.3926991</min_angle> <!-- -22.5 degrees -->
+            <max_angle>0.3926991</max_angle>  <!-- +22.5 degrees -->
           </vertical>
         </scan>
         <range>
@@ -71,6 +70,20 @@
       <visualize>true</visualize>
       <topic>imu</topic>
       <gz_frame_id>os_sensor</gz_frame_id>
+      
+      <!-- Noise for GTSAM -->
+      <imu>
+        <angular_velocity>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>0.017</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>0.017</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>0.017</stddev></noise></z>
+        </linear_acceleration>
+      </imu>
     </sensor>
   </gazebo>
 
@@ -81,6 +94,18 @@
       <update_rate>10</update_rate>
       <topic>gps/fix</topic>
       <gz_frame_id>RTK_gnss</gz_frame_id>
+      
+      <!-- Noise for GTSAM -->
+      <navsat>
+        <position_sensing>
+          <horizontal>
+            <noise type="gaussian"><mean>0.0</mean><stddev>0.01</stddev></noise>
+          </horizontal>
+          <vertical>
+            <noise type="gaussian"><mean>0.0</mean><stddev>0.01</stddev></noise>
+          </vertical>
+        </position_sensing>
+      </navsat>
     </sensor>
   </gazebo>
 

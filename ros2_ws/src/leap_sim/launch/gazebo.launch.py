@@ -63,11 +63,15 @@ def generate_launch_description():
         executable='parameter_bridge',
         arguments=[
             '/clock@rosgraph_msgs/msg/Clock[ignition.msgs.Clock',
-            '/scan@sensor_msgs/msg/LaserScan[ignition.msgs.LaserScan',
+            # '/scan@sensor_msgs/msg/LaserScan[ignition.msgs.LaserScan',
             '/scan/points@sensor_msgs/msg/PointCloud2[ignition.msgs.PointCloudPacked',
             '/imu@sensor_msgs/msg/Imu[gz.msgs.IMU',
             '/camera/camera_info@sensor_msgs/msg/CameraInfo[gz.msgs.CameraInfo',
             '/gps/fix@sensor_msgs/msg/NavSatFix[gz.msgs.NavSat'
+        ],
+        remappings=[  # We remap these onto "raw" topics so we can inject covariances
+            ('/imu', '/imu_raw'),
+            ('gps/fix', '/gps/fix_raw')
         ],
         output='screen'
     )
@@ -81,6 +85,24 @@ def generate_launch_description():
         arguments=['/camera/image_raw'],
         parameters=[{'use_sim_time': True}],
         output='screen'
+    )
+
+    # Injects covariance values into the raw IMU topic from Gazebo
+    imu_cov_injector = Node(
+        package='leap_sim',
+        executable='imu_covariance_injector',
+        name='imu_covariance_injector',
+        parameters=[{'use_sim_time': True}],
+        output='screen',
+    )
+
+    # Injects covariance values into the raw GPS topic from Gazebo
+    gps_cov_injector = Node(
+        package='leap_sim',
+        executable='gps_covariance_injector',
+        name='gps_covariance_injector',
+        parameters=[{'use_sim_time': True}],
+        output='screen',
     )
 
     # Reads the wheel positions from Gazebo and publishes them to /joint_states
@@ -107,6 +129,8 @@ def generate_launch_description():
     ld.add_action(spawn_robot)
     ld.add_action(bridge)
     ld.add_action(image_bridge)
+    ld.add_action(imu_cov_injector)
+    ld.add_action(gps_cov_injector)
     ld.add_action(load_joint_state_broadcaster)
     ld.add_action(load_diff_drive_controller)
 

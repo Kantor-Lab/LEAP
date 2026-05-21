@@ -7,10 +7,46 @@ endif()
 
 # find dependencies
 find_package(ament_cmake REQUIRED)
-# uncomment the following section in order to fill in
-# further dependencies manually.
-# find_package(<dependency> REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
 
+# IMU Covariance Injector
+add_executable(imu_covariance_injector
+  src/imu_covariance_injector.cpp
+)
+target_include_directories(imu_covariance_injector PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+)
+target_compile_features(imu_covariance_injector PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(imu_covariance_injector
+  rclcpp
+  sensor_msgs
+)
+
+# GPS Covariance Injector
+add_executable(gps_covariance_injector
+  src/gps_covariance_injector.cpp
+)
+target_include_directories(gps_covariance_injector PUBLIC
+  $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include/${PROJECT_NAME}>
+)
+target_compile_features(gps_covariance_injector PUBLIC c_std_99 cxx_std_17)
+ament_target_dependencies(gps_covariance_injector
+  rclcpp
+  sensor_msgs
+)
+
+# Install executables
+install(
+  TARGETS
+    imu_covariance_injector
+    gps_covariance_injector
+  DESTINATION lib/${PROJECT_NAME}
+)
+
+# Install directories
 install(
   DIRECTORY 
     launch
@@ -24,12 +60,7 @@ install(
 
 if(BUILD_TESTING)
   find_package(ament_lint_auto REQUIRED)
-  # the following line skips the linter which checks for copyrights
-  # comment the line when a copyright and license is added to all source files
   set(ament_cmake_copyright_FOUND TRUE)
-  # the following line skips cpplint (only works in a git repo)
-  # comment the line when this package is in a git repo and when
-  # a copyright and license is added to all source files
   set(ament_cmake_cpplint_FOUND TRUE)
   ament_lint_auto_find_test_dependencies()
 endif()
