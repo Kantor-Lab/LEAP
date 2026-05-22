@@ -163,7 +163,7 @@ def generate_launch_description():
     # Mandatory
     lidar_topic_name_arg = DeclareLaunchArgument(
         "lidar_topic_name", 
-        default_value="/scan/points",
+        default_value="/ouster/points",
         description="Topic name to listen for LiDAR input, for example '/ouster/points' for PointCloud2 or '/scan' for LaserScan; see lidar_topic_type")
     lidar_topic_env_var = SetEnvironmentVariable(
         name='MOLA_LIDAR_TOPIC', value=LaunchConfiguration('lidar_topic_name'))
@@ -216,7 +216,7 @@ def generate_launch_description():
         name='MOLA_USE_FIXED_IMU_POSE', value=LaunchConfiguration('ignore_imu_pose_from_tf'))
 
     gnss_topic_name_arg = DeclareLaunchArgument(
-        "gnss_topic_name", default_value="/gps/fix", description="Topic name to listen for NavSatFix input from a GNSS (for example '/gps')")
+        "gnss_topic_name", default_value="/gps/fix_dummy", description="Topic name to listen for NavSatFix input from a GNSS (for example '/gps')")
     gps_topic_env_var = SetEnvironmentVariable(
         name='MOLA_GNSS_TOPIC', value=LaunchConfiguration('gnss_topic_name'))
     # ~~~~~~~~~~~~
@@ -226,7 +226,7 @@ def generate_launch_description():
         name='MOLA_GPS_FIX_TOPIC', value=LaunchConfiguration('gpsfix_topic_name'))
     # ~~~~~~~~~~~~
     imu_topic_name_arg = DeclareLaunchArgument(
-        "imu_topic_name", default_value="/imu", description="Topic name to listen for Imu input (for example '/imu')")
+        "imu_topic_name", default_value="/ouster/imu", description="Topic name to listen for Imu input (for example '/imu')")
     imu_topic_name_env_var = SetEnvironmentVariable(
         name='MOLA_IMU_TOPIC', value=LaunchConfiguration('imu_topic_name'))
 
@@ -562,7 +562,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         'use_sim_time',
-        default_value='true',
+        default_value='false',
         description='Use simulation (bag) clock if true')
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
@@ -595,6 +595,7 @@ def generate_launch_description():
             output='screen',
             remappings=tf_remaps,
             arguments=[mola_system_yaml_file],
+            prefix="gdb -ex run -ex bt --batch --args ",
             parameters=[{'use_sim_time': use_sim_time}],
             on_exit=Shutdown()
         ),
@@ -607,7 +608,6 @@ def generate_launch_description():
             remappings=tf_remaps,
             parameters=[{'use_sim_time': use_sim_time}],
             arguments=[
-                # '-d', [os.path.join(myDir, 'rviz2', 'lidar-odometry.rviz')]]
                 '-d', [os.path.join(myDir, 'rviz', 'lidar-odometry.rviz')]]
         ),
 
