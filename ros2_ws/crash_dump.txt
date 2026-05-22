@@ -1,0 +1,39 @@
+[INFO] [launch]: All log files can be found below /home/atharvgoel/.ros/log/2026-05-22-12-20-43-143295-kantorLEAP-141140
+[INFO] [launch]: Default logging verbosity is set to INFO
+[INFO] [mola-cli-1]: process started with pid [141156]
+[INFO] [rviz2-2]: process started with pid [141158]
+[rviz2-2] Warning: Ignoring XDG_SESSION_TYPE=wayland on Gnome. Use QT_QPA_PLATFORM=wayland to run on Wayland anyway.
+[rviz2-2] [INFO] [1779466843.581721912] [rviz2]: Stereo is NOT SUPPORTED
+[rviz2-2] [INFO] [1779466843.581912719] [rviz2]: OpenGl version: 4.6 (GLSL 4.6)
+[rviz2-2] [INFO] [1779466843.600108882] [rviz2]: Stereo is NOT SUPPORTED
+[mola-cli-1] [12:20:43.4206|INFO |MolaLauncherApp] Setting up system from YAML config... (set DEBUG verbosity level to see full config)
+[mola-cli-1] [12:20:43.4207|INFO |MolaLauncherApp] Instantiating module `viz` of type `mola::MolaViz`
+[mola-cli-1] [12:20:43.4246|INFO |MolaLauncherApp] Instantiating module `lidar_odom` of type `mola::LidarOdometry`
+[mola-cli-1] [12:20:43.4260|INFO |MolaLauncherApp] Instantiating module `state_estimation` of type `mola::state_estimation_smoother::StateEstimationSmoother`
+[mola-cli-1] [12:20:43.4263|INFO |MolaLauncherApp] Instantiating module `ros2_bridge` of type `mola::BridgeROS2`
+[mola-cli-1] [12:20:43.4268|INFO |mola::LidarOdometry:lidar_odom] Attached to a VizInterface module
+[mola-cli-1] [12:20:43.4269|INFO |MolaLauncherApp] 
+[mola-cli-1] ╔═══════════════════════════════════════╦═════════════════════════════════╗
+[mola-cli-1] ║  Entering main MOLA application loop  ║ > CTRL+C for mola-cli to quit < ║
+[mola-cli-1] ╚═══════════════════════════════════════╩═════════════════════════════════╝
+[mola-cli-1] [12:20:43.4275|INFO |LidarOdometry] 
+[mola-cli-1] ┌──────────────────────────────────────────────────────────────┐
+[mola-cli-1] │              USING THIS LIDAR-ODOMETRY PIPELINE              │
+[mola-cli-1] ├──────────────────────────────────────────────────────────────┤
+[mola-cli-1] │              GICP (Generalized ICP) with cov-to-cov pairings │
+[mola-cli-1] └──────────────────────────────────────────────────────────────┘
+[mola-cli-1] [12:20:43.4776|INFO |mola::BridgeROS2:ros2_bridge] Subscribing to MOLA localization source module 'mola::LidarOdometry:lidar_odom'
+[mola-cli-1] [12:20:43.4777|INFO |mola::BridgeROS2:ros2_bridge] Subscribing to MOLA localization source module 'mola::state_estimation_smoother::StateEstimationSmoother:state_estimation'
+[mola-cli-1] [12:20:43.4777|INFO |mola::BridgeROS2:ros2_bridge] Subscribing to MOLA map source module 'mola::LidarOdometry:lidar_odom'
+[mola-cli-1] [12:20:43.4777|INFO |mola::BridgeROS2:ros2_bridge] Subscribing to MOLA map source module 'mola::state_estimation_smoother::StateEstimationSmoother:state_estimation'
+[mola-cli-1] [12:20:43.4777|INFO |mola::BridgeROS2:ros2_bridge] Subscribing to MOLA relocalization module 'mola::LidarOdometry:lidar_odom'
+[mola-cli-1] [12:20:43.4805|INFO |mola::BridgeROS2:ros2_bridge] Subscribing to MOLA map server module 'mola::LidarOdometry:lidar_odom'
+[mola-cli-1] [12:20:43.5830|WARN |StateEstimationSmoother] Constant-velocity kinematics factor added for large dT=1779466747.000 s.
+[mola-cli-1] [12:20:43.6275|ERROR|MolaLauncherApp] Error: Will shutdown since thread for module named `state_estimation` ended due to an exception:
+[mola-cli-1] ==== non-MRPT exception ====
+[mola-cli-1] Index out of requested size range
+[ERROR] [mola-cli-1]: process has died [pid 141156, exit code -11, cmd '/opt/ros/humble/lib/mola_launcher/mola-cli /home/atharvgoel/LEAP/ros2_ws/install/leap_control/share/leap_control/config/lidar_odometry_ros2.yaml --ros-args --params-file /tmp/launch_params_vulbvczr -r /tf:=tf -r /tf_static:=tf_static'].
+[INFO] [launch]: process[mola-cli-1] was required: shutting down launched system
+[INFO] [rviz2-2]: sending signal 'SIGINT' to process[rviz2-2]
+[rviz2-2] [INFO] [1779466845.306598743] [rclcpp]: signal_handler(SIGINT/SIGTERM)
+[INFO] [rviz2-2]: process has finished cleanly [pid 141158]

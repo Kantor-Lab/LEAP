@@ -53,6 +53,7 @@ def generate_launch_description():
             '-topic', 'robot_description', 
             '-x', '-8.0', '-y', '0.0', '-z', '0.0'
         ], 
+        parameters=[{'use_sim_time': True}],
         output='screen', 
     )
 
@@ -71,8 +72,9 @@ def generate_launch_description():
         ],
         remappings=[  # We remap these onto "raw" topics so we can inject covariances
             ('/imu', '/imu_raw'),
-            ('gps/fix', '/gps/fix_raw')
+            ('/gps/fix', '/gps/fix_raw')
         ],
+        parameters=[{'use_sim_time': True}],
         output='screen'
     )
 
@@ -111,6 +113,7 @@ def generate_launch_description():
         package="controller_manager",
         executable="spawner",
         arguments=["joint_broad"],
+        parameters=[{'use_sim_time': True}],
         output="screen",
     )
 
@@ -119,6 +122,7 @@ def generate_launch_description():
         package="controller_manager",
         executable="spawner",
         arguments=["diff_controller"],
+        parameters=[{'use_sim_time': True}],
         output="screen",
     )
 
