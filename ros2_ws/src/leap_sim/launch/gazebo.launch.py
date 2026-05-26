@@ -72,7 +72,8 @@ def generate_launch_description():
         ],
         remappings=[  # We remap these onto "raw" topics so we can inject covariances
             ('/imu', '/imu_raw'),
-            ('/gps/fix', '/gps/fix_raw')
+            ('/gps/fix', '/gps/fix_raw'),
+            ('/scan/points', '/ouster/points')
         ],
         parameters=[{'use_sim_time': True}],
         output='screen'

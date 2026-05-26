@@ -70,6 +70,20 @@
       <visualize>true</visualize>
       <topic>imu</topic>
       <gz_frame_id>os_sensor</gz_frame_id>
+      
+      <!-- Noise for GTSAM -->
+      <imu>
+        <angular_velocity>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>0.0002</stddev></noise></z>
+        </angular_velocity>
+        <linear_acceleration>
+          <x><noise type="gaussian"><mean>0.0</mean><stddev>0.017</stddev></noise></x>
+          <y><noise type="gaussian"><mean>0.0</mean><stddev>0.017</stddev></noise></y>
+          <z><noise type="gaussian"><mean>0.0</mean><stddev>0.017</stddev></noise></z>
+        </linear_acceleration>
+      </imu>
     </sensor>
   </gazebo>
 
@@ -80,6 +94,18 @@
       <update_rate>10</update_rate>
       <topic>gps/fix</topic>
       <gz_frame_id>RTK_gnss</gz_frame_id>
+      
+      <!-- Noise for GTSAM -->
+      <navsat>
+        <position_sensing>
+          <horizontal>
+            <noise type="gaussian"><mean>0.0</mean><stddev>0.00000009</stddev></noise> <!-- in freaking degrees for some reason -->
+          </horizontal>
+          <vertical>
+            <noise type="gaussian"><mean>0.0</mean><stddev>0.01</stddev></noise>
+          </vertical>
+        </position_sensing>
+      </navsat>
     </sensor>
   </gazebo>
 

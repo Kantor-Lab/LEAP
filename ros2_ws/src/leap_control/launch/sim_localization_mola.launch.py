@@ -5,7 +5,7 @@ from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch.conditions import IfCondition
 from launch_ros.actions import Node, PushRosNamespace
 from launch.actions import (DeclareLaunchArgument, SetEnvironmentVariable,
-                            GroupAction, Shutdown, OpaqueFunction)
+                            GroupAction, Shutdown, OpaqueFunction, ExecuteProcess)
 from ament_index_python import get_package_share_directory
 import os
 
@@ -298,7 +298,7 @@ def generate_launch_description():
         name='MOLA_WITH_GUI', value=LaunchConfiguration('use_mola_gui'))
 
     publish_localization_following_rep105_arg = DeclareLaunchArgument(
-        "publish_localization_following_rep105", default_value="True", description="Whether to publish localization TFs in between map->odom (true) or directly map->base_link (false)")
+        "publish_localization_following_rep105", default_value="False", description="Whether to publish localization TFs in between map->odom (true) or directly map->base_link (false)")
     publish_localization_following_rep105_env_var = SetEnvironmentVariable(
         name='MOLA_LOCALIZ_USE_REP105', value=LaunchConfiguration('publish_localization_following_rep105'))
 
@@ -457,14 +457,14 @@ def generate_launch_description():
     localization_publish_tf_source_env_var = SetEnvironmentVariable(
         name='MOLA_LOCALIZATION_PUBLISH_TF_SOURCE',
         value=PythonExpression([
-            "'state_estimator' if ", LaunchConfiguration(
+            "'state_estimation' if ", LaunchConfiguration(
                 'use_state_estimator'), " else 'lidar_odometry'"
         ])
     )
     localization_publish_odom_source_env_var = SetEnvironmentVariable(
         name='MOLA_LOCALIZATION_PUBLISH_ODOM_MSGS_SOURCE',
         value=PythonExpression([
-            "'state_estimator' if ", LaunchConfiguration(
+            "'state_estimation' if ", LaunchConfiguration(
                 'use_state_estimator'), " else 'lidar_odometry'"
         ])
     )
@@ -562,7 +562,7 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         'use_sim_time',
-        default_value='false',
+        default_value='true',
         description='Use simulation (bag) clock if true')
 
     # Map fully qualified names to relative ones so the node's namespace can be prepended.
@@ -738,6 +738,11 @@ def generate_launch_description():
 
         SetEnvironmentVariable(name='MOLA_LINK_FIRST_POSE_SIGMA', value='1e-6'),
         SetEnvironmentVariable(name='MOLA_IMU_SENSOR_LABEL', value='imu_sensor'),
+
+        ExecuteProcess(
+            cmd=['bash', '-c', 'env | grep MOLA'],
+            output='screen'
+        ),
 
         # group
         node_group

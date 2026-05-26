@@ -16,7 +16,7 @@ ImuCovarianceInjector::ImuCovarianceInjector(const rclcpp::NodeOptions & options
         std::bind(&ImuCovarianceInjector::imu_callback, this, std::placeholders::_1));
 
     // Publish the corrected topic for GTSAM
-    pub_ = this->create_publisher<sensor_msgs::msg::Imu>("imu", 10);
+    pub_ = this->create_publisher<sensor_msgs::msg::Imu>("/ouster/imu", 10);
     
     RCLCPP_INFO(this->get_logger(), "IMU Covariance Injector Node started.");
 }
