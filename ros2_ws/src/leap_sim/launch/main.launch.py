@@ -21,7 +21,7 @@ def generate_launch_description():
     # Launch localization within the simulator
     localization_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(
-            os.path.join(pkg_leap_control, 'launch', 'ros2-lidar-odometry.launch.py')
+            os.path.join(pkg_leap_control, 'launch', 'sim_localization_mola.launch.py')
         ),
         launch_arguments={'use_sim_time': 'true'}.items()
     )

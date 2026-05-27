@@ -16,7 +16,6 @@ install(
     launch
     config
     maps
-    rviz
   DESTINATION share/${PROJECT_NAME}
 )
 
