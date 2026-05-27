@@ -24,7 +24,7 @@ modules:
     raw_data_source: "ros2_bridge"
     # This includes here a whole block "params: (...)"
     # with the LIDAR-Odometry pipeline configuration:
-    params: "/home/atharvgoel/LEAP/ros2_ws/src/leap_control/config/lidar3d-default.yaml"
+    params: "lidar3d-default.yaml"
 
   # =====================
   # State Estimation

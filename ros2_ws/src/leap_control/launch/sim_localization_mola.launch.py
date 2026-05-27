@@ -5,7 +5,7 @@ from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch.conditions import IfCondition
 from launch_ros.actions import Node, PushRosNamespace
 from launch.actions import (DeclareLaunchArgument, SetEnvironmentVariable,
-                            GroupAction, Shutdown, OpaqueFunction)
+                            GroupAction, Shutdown, OpaqueFunction, ExecuteProcess)
 from ament_index_python import get_package_share_directory
 import os
 
@@ -163,7 +163,7 @@ def generate_launch_description():
     # Mandatory
     lidar_topic_name_arg = DeclareLaunchArgument(
         "lidar_topic_name", 
-        default_value="/scan/points",
+        default_value="/ouster/points",
         description="Topic name to listen for LiDAR input, for example '/ouster/points' for PointCloud2 or '/scan' for LaserScan; see lidar_topic_type")
     lidar_topic_env_var = SetEnvironmentVariable(
         name='MOLA_LIDAR_TOPIC', value=LaunchConfiguration('lidar_topic_name'))
@@ -216,7 +216,7 @@ def generate_launch_description():
         name='MOLA_USE_FIXED_IMU_POSE', value=LaunchConfiguration('ignore_imu_pose_from_tf'))
 
     gnss_topic_name_arg = DeclareLaunchArgument(
-        "gnss_topic_name", default_value="gps", description="Topic name to listen for NavSatFix input from a GNSS (for example '/gps')")
+        "gnss_topic_name", default_value="/gps/fix_dummy", description="Topic name to listen for NavSatFix input from a GNSS (for example '/gps')")
     gps_topic_env_var = SetEnvironmentVariable(
         name='MOLA_GNSS_TOPIC', value=LaunchConfiguration('gnss_topic_name'))
     # ~~~~~~~~~~~~
@@ -226,7 +226,7 @@ def generate_launch_description():
         name='MOLA_GPS_FIX_TOPIC', value=LaunchConfiguration('gpsfix_topic_name'))
     # ~~~~~~~~~~~~
     imu_topic_name_arg = DeclareLaunchArgument(
-        "imu_topic_name", default_value="/imu", description="Topic name to listen for Imu input (for example '/imu')")
+        "imu_topic_name", default_value="/ouster/imu", description="Topic name to listen for Imu input (for example '/imu')")
     imu_topic_name_env_var = SetEnvironmentVariable(
         name='MOLA_IMU_TOPIC', value=LaunchConfiguration('imu_topic_name'))
 
@@ -410,13 +410,13 @@ def generate_launch_description():
         function=_apply_initial_localization_method)
 
     use_state_estimator_arg = DeclareLaunchArgument(
-        "use_state_estimator", default_value="False",
-        # "use_state_estimator", default_value="True",
+        # "use_state_estimator", default_value="False",
+        "use_state_estimator", default_value="True",
         description="If true, uses StateEstimationSmoother (requires optional package).")
 
     # Convenience high-level GNSS mode selector (see resolve_gnss_mode()).
     gnss_mode_arg = DeclareLaunchArgument(
-        "gnss_mode", default_value="none",
+        "gnss_mode", default_value="live_georef",
         description="High-level GNSS usage: none | log_only | live_georef | relocalize. "
                     "'live_georef' and 'relocalize' require use_state_estimator:=True.")
 
@@ -457,14 +457,14 @@ def generate_launch_description():
     localization_publish_tf_source_env_var = SetEnvironmentVariable(
         name='MOLA_LOCALIZATION_PUBLISH_TF_SOURCE',
         value=PythonExpression([
-            "'state_estimator' if ", LaunchConfiguration(
+            "'state_estimation' if ", LaunchConfiguration(
                 'use_state_estimator'), " else 'lidar_odometry'"
         ])
     )
     localization_publish_odom_source_env_var = SetEnvironmentVariable(
         name='MOLA_LOCALIZATION_PUBLISH_ODOM_MSGS_SOURCE',
         value=PythonExpression([
-            "'state_estimator' if ", LaunchConfiguration(
+            "'state_estimation' if ", LaunchConfiguration(
                 'use_state_estimator'), " else 'lidar_odometry'"
         ])
     )
@@ -493,15 +493,27 @@ def generate_launch_description():
     use_imu_for_lio_arg = DeclareLaunchArgument(
         "use_imu_for_lio", default_value="True",
         description="If true, enable LIO mode (MotionCompensationMethod::IMU for deskew). Requires a working imu_topic_name.")
+    # mola_deskew_method_env_var = SetEnvironmentVariable(
+    #     name='MOLA_DESKEW_METHOD',
+    #     value=PythonExpression([
+    #         "'MotionCompensationMethod::IMU' if ",
+    #         LaunchConfiguration('use_imu_for_lio'),
+    #         " else '",
+    #         LaunchConfiguration('mola_deskew_method'),
+    #         "'"
+    #     ]))
     mola_deskew_method_env_var = SetEnvironmentVariable(
         name='MOLA_DESKEW_METHOD',
         value=PythonExpression([
-            "'MotionCompensationMethod::IMU' if ",
+            "'MotionCompensationMethod::None' if '", 
+            LaunchConfiguration('use_sim_time'),
+            "'.lower() == 'true' else ('MotionCompensationMethod::IMU' if '",
             LaunchConfiguration('use_imu_for_lio'),
-            " else '",
-            LaunchConfiguration('mola_deskew_method'),
-            "'"
+            "'.lower() == 'true' else '", 
+            LaunchConfiguration('mola_deskew_method'), 
+            "')"
         ]))
+
     # ~~~~~~~~~~~~
     imu_gravity_correction_arg = DeclareLaunchArgument(
         "imu_gravity_correction", default_value="true", description="Whether to use IMU accelerometer readings to constrain ICP pitch/roll (prevents vertical drift; safe to leave enabled even without an IMU)")
@@ -550,7 +562,6 @@ def generate_launch_description():
     use_sim_time = LaunchConfiguration('use_sim_time')
     declare_use_sim_time_cmd = DeclareLaunchArgument(
         'use_sim_time',
-        # default_value='false',
         default_value='true',
         description='Use simulation (bag) clock if true')
 
@@ -568,7 +579,6 @@ def generate_launch_description():
     # MOLA subsystem configuration YAML file
     # ------------------------------------------
     mola_system_yaml_file = os.path.join(
-        # myDir, 'mola-cli-launchs', 'lidar_odometry_ros2.yaml')
         myDir, 'config', 'lidar_odometry_ros2.yaml')
 
     # -------------------
@@ -585,8 +595,8 @@ def generate_launch_description():
             output='screen',
             remappings=tf_remaps,
             arguments=[mola_system_yaml_file],
+            prefix="gdb -ex run -ex bt --batch --args ",
             parameters=[{'use_sim_time': use_sim_time}],
-            prefix=['gdb -batch -ex run -ex bt --args'],  # For debugging with gdb; remove prefix for normal operation
             on_exit=Shutdown()
         ),
 
@@ -598,7 +608,6 @@ def generate_launch_description():
             remappings=tf_remaps,
             parameters=[{'use_sim_time': use_sim_time}],
             arguments=[
-                # '-d', [os.path.join(myDir, 'rviz2', 'lidar-odometry.rviz')]]
                 '-d', [os.path.join(myDir, 'rviz', 'lidar-odometry.rviz')]]
         ),
 
@@ -726,6 +735,15 @@ def generate_launch_description():
 
         localization_publish_tf_source_env_var,
         localization_publish_odom_source_env_var,
+
+        SetEnvironmentVariable(name='MOLA_LINK_FIRST_POSE_SIGMA', value='1e-6'),
+        SetEnvironmentVariable(name='MOLA_IMU_SENSOR_LABEL', value='imu_sensor'),
+
+        ExecuteProcess(
+            cmd=['bash', '-c', 'env | grep MOLA'],
+            output='screen'
+        ),
+
         # group
         node_group
     ])
