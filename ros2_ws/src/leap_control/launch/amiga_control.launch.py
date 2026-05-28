@@ -1,5 +1,3 @@
-#!/usr/bin/env python3
-
 import os
 
 from ament_index_python.packages import get_package_share_directory
@@ -12,7 +10,8 @@ def generate_launch_description():
     pkg_leap_control = get_package_share_directory('leap_control')
 
     teleop_launch_path = os.path.join(pkg_leap_control, 'launch', 'teleop.launch.py')
-    ekf_config = os.path.join(pkg_leap_control, 'config', 'ekf.yaml')
+    ekf_local_config = os.path.join(pkg_leap_control, 'config', 'ekf_local.yaml')
+    ekf_global_config = os.path.join(pkg_leap_control, 'config', 'ekf_global.yaml')
 
     teleop_included_launch = IncludeLaunchDescription(
         PythonLaunchDescriptionSource(teleop_launch_path)
@@ -39,21 +38,10 @@ def generate_launch_description():
         output='screen'
     )
 
-    ekf_node = Node(
-        package='robot_localization',
-        executable='ekf_node',
-        name='ekf_filter_node',
-        parameters=[ekf_config],
-        output='screen',
-    )
-
     ld = LaunchDescription()
-    
-
     ld.add_action(teleop_included_launch)     
     ld.add_action(control_node)
     ld.add_action(cmdvel_relay_node)
     ld.add_action(imu_relay_node)
-    ld.add_action(ekf_node)
 
     return ld
