@@ -1,0 +1,52 @@
+ekf_filter_node:
+  ros__parameters:
+    frequency: 30.0
+    sensor_timeout: 0.1
+    two_d_mode: true
+    transform_time_offset: 0.0
+    transform_timeout: 0.0
+    print_diagnostics: true
+    debug: false
+    publish_tf: true
+
+    # Coordinate Frames
+    map_frame: map              # Defaults to "map" if unspecified
+    odom_frame: odom            # Defaults to "odom" if unspecified
+    base_link_frame: base_link  # Defaults to "base_link" if unspecified
+    world_frame: odom           # Defaults to the value of odom_frame if unspecified
+
+    # ============================================
+    # IMU Configuration (/ouster/imu)
+    # ============================================
+    imu0: /imu
+    # The order of the matrix is:
+    # [x, y, z, 
+    #  roll, pitch, yaw, 
+    #  vx, vy, vz, 
+    #  vroll, vpitch, vyaw, 
+    #  ax, ay, az]
+    imu0_config: [false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  true,  true,  true,
+                  true,  true,  false] # Ignoring Z acceleration for 2D mode
+                  
+    imu0_nodelay: false
+    imu0_differential: false
+    imu0_relative: true
+    imu0_queue_size: 10
+    imu0_remove_gravitational_acceleration: true
+
+    # ============================================
+    # Velocity Configuration (/cmd_vel)
+    # ============================================
+    twist0: /cmd_vel
+    twist0_config: [false, false, false,
+                    false, false, false,
+                    true,  true,  false,  # Fusing X and Y linear velocities
+                    false, false, true,   # Fusing Yaw angular velocity
+                    false, false, false]
+    twist0_queue_size: 10
+    twist0_nodelay: false
+    twist0_differential: false
+    twist0_relative: false

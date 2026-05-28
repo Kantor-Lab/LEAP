@@ -18,24 +18,34 @@ def generate_launch_description():
         description='Use simulation (Gazebo) clock if true'
     )
 
-    twist_mux_config = os.path.join(pkg_leap_control, 'config', 'twist_mux_params.yaml')
-    xbox_config = os.path.join(pkg_leap_control, 'config', 'xbox_joy_params.yaml')
+    xbox_config = os.path.join(pkg_leap_control, 'config', 'xbox_params.yaml')
+    twist_mux_config = os.path.join(pkg_leap_control, 'config', 'mux_params.yaml')
 
     # Reads hardware inputs from the Xbox controller
     joy_node = Node(
         package='joy',
         executable='joy_node',
-        parameters=[xbox_config, {'use_sim_time': use_sim_time}],
+        name='joy_node',
+        parameters=[
+            xbox_config,
+            {'use_sim_time': use_sim_time}
+        ],
         output='screen'
     )
 
     # Translates button presses into velocity commands (cmd_vel_joy)
-    teleop_node = Node(
+    joy_teleop_node = Node(
         package='teleop_twist_joy', 
         executable='teleop_node',
-        name='teleop_node',
-        parameters=[xbox_config, {'use_sim_time': use_sim_time}],
-        remappings=[('/cmd_vel', '/cmd_vel_joy')],
+        name='teleop_twist_joy_node',
+        parameters=[
+            xbox_config,
+            {
+                'use_sim_time': use_sim_time,
+                'publish_stamped_twist': False  # The mux expects unstamped messages
+            }
+        ],
+        remappings=[('/cmd_vel', 'cmd_vel_joy')],
         output='screen'
     )
 
@@ -44,8 +54,11 @@ def generate_launch_description():
     twist_mux_node = Node(
         package='twist_mux',
         executable='twist_mux',
-        parameters=[twist_mux_config, {'use_sim_time': use_sim_time}],
-        remappings=[('cmd_vel_out', 'diff_controller/cmd_vel_unstamped')],
+        parameters=[
+            twist_mux_config,
+            {'use_sim_time': use_sim_time}
+        ],
+        remappings=[('/cmd_vel_out', '/cmd_vel_raw')],
         output='screen',
     )
 
@@ -53,7 +66,7 @@ def generate_launch_description():
     
     ld.add_action(declare_use_sim_time)
     ld.add_action(joy_node)
-    ld.add_action(teleop_node)
+    ld.add_action(joy_teleop_node)
     ld.add_action(twist_mux_node)
 
     return ld
