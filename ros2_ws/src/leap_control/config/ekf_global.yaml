@@ -1,4 +1,4 @@
-ekf_global:
+ekf_global_filter_node:
   ros__parameters:
     frequency: 30.0
     sensor_timeout: 0.1
@@ -55,20 +55,20 @@ ekf_global:
     # ============================================
     # GPS Configuration (/odometry/gps, post navsat_transform_node)
     # ============================================
-    odom0: /odometry/gps
-    odom0_config: [true,  true,  true,   # GPS gives absolute X, Y, Z
-                  false, false, false,
-                  false, false, false,
-                  false, false, false,
-                  false, false, false]
-    odom0_differential: false
+    # odom0: /odometry/gps
+    # odom0_config: [true,  true, false,   # GPS gives absolute X, Y
+    #               false, false, false,
+    #               false, false, false,
+    #               false, false, false,
+    #               false, false, false]
+    # odom0_differential: false
 
     # ============================================
     # VGICP Configuration (/cmd_vel)
     # ============================================
     pose0: /localizer/pose
-    pose0_config: [true,  true,  true,  # VGICP gives absolute X, Y, Z
-                  true,  true,  true,   # VGICP gives absolute Roll, Pitch, Yaw
+    pose0_config: [true,  true, false,  # VGICP gives absolute X, Y, Z
+                  false, false,  true,  # VGICP gives absolute Roll, Pitch, Yaw
                   false, false, false,
                   false, false, false,
                   false, false, false]

@@ -2,7 +2,8 @@ import os
 
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
-from launch.actions import IncludeLaunchDescription
+from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
+from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
 
@@ -13,7 +14,7 @@ def generate_launch_description():
     control_launch_path = os.path.join(pkg_leap_control, 'launch', 'amiga_control.launch.py')
     ekf_local_config = os.path.join(pkg_leap_control, 'config', 'ekf_local.yaml')
     ekf_global_config = os.path.join(pkg_leap_control, 'config', 'ekf_global.yaml')
-    map_path = os.path.join(pkg_leap_icp, 'maps', 'map.ply')
+    map_path = os.path.join(pkg_leap_icp, 'maps', 'cmu.ply')
 
     map_ply_arg = DeclareLaunchArgument(
         'map_ply',

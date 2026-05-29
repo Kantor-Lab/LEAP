@@ -4,7 +4,7 @@
   <name>leap_icp</name>
   <version>0.0.0</version>
   <description>TODO: Package description</description>
-  <maintainer email="atharvgo@andrew.cmu.edu">slam_rig</maintainer>
+  <maintainer email="atharvgo@andrew.cmu.edu">atharvgo</maintainer>
   <license>Apache-2.0</license>
 
   <depend>rclcpp</depend>
@@ -16,7 +16,6 @@
   <depend>nav_msgs</depend>
   <depend>geometry_msgs</depend>
 
-  <depend>pcl_ros</depend>
   <depend>pcl_conversions</depend>
 
   <depend>fast_gicp</depend>

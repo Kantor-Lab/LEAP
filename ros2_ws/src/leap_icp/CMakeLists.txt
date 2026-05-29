@@ -1,6 +1,10 @@
 cmake_minimum_required(VERSION 3.8)
 project(leap_icp)
 
+if(POLICY CMP0074)
+  cmake_policy(SET CMP0074 NEW)
+endif()
+
 if(CMAKE_COMPILER_IS_GNUCXX OR CMAKE_CXX_COMPILER_ID MATCHES "Clang")
   add_compile_options(-Wall -Wextra -Wpedantic)
 endif()
@@ -18,9 +22,15 @@ find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
 
 add_executable(map_odom_localizer src/map_odom_localizer.cpp)
+
 target_include_directories(map_odom_localizer PUBLIC
   ${PCL_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
+)
+
+target_compile_definitions(map_odom_localizer PRIVATE
+    THRUST_IGNORE_CUB_VERSION_CHECK
+    EIGEN_NO_CUDA
 )
 
 ament_target_dependencies(map_odom_localizer
@@ -37,6 +47,12 @@ ament_target_dependencies(map_odom_localizer
 # Install rules
 install(TARGETS map_odom_localizer
   DESTINATION lib/${PROJECT_NAME}
+)
+
+install(
+  DIRECTORY 
+    maps
+  DESTINATION share/${PROJECT_NAME}
 )
 
 if(BUILD_TESTING)

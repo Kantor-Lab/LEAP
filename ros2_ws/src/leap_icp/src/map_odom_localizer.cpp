@@ -19,7 +19,6 @@
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
-#include <pcl_ros/transforms.hpp>
 #include <pcl/point_types.h>
 #include <pcl/point_cloud.h>
 #include <pcl/filters/voxel_grid.h>
@@ -146,11 +145,12 @@ private:
 
     void cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg) {
         rclcpp::Time stamp = msg->header.stamp;
+        // rclcpp::Time stamp = this->get_clock()->now();
 
         // 1. Transform Lidar -> Base Link
         auto scan_base = toBaseFrame(msg, stamp);
         if (!scan_base) return;
-        auto scan_ds = downsample(scan_base, voxel_leaf_scan_);
+        auto scan_ds = downsample(scan_base.value(), voxel_leaf_scan_);
 
         // 2. Look up the prior guess from the Global EKF
         Eigen::Isometry3d initial_guess;
@@ -172,12 +172,17 @@ private:
 
         // Cache and print the actual fitness score for debugging
         double fitness = vgicp_->getFitnessScore();
-        if (!vgicp_->hasConverged() || fitness > max_fitness_) {
+        bool converged = vgicp_->hasConverged();
+        if (!converged || fitness > max_fitness_) {
             RCLCPP_WARN_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
-                "[map_odom_localizer] ICP failed. fitness=%.4f (threshold=%.4f). Scan dropped.", 
-                fitness, max_fitness_);
+                "[map_odom_localizer] ICP failed. converged=%s, fitness=%.4f (threshold=%.4f). Scan dropped.", 
+                converged ? "true" : "false", fitness, max_fitness_);
             return;
         }
+        // If we reach here, ICP succeeded! Log the successful fitness score.
+        RCLCPP_INFO_THROTTLE(this->get_logger(), *this->get_clock(), 1000,
+            "[map_odom_localizer] ICP succeeded! fitness=%.4f", 
+            fitness);
 
         Eigen::Isometry3d map_to_base;
         map_to_base.matrix() = vgicp_->getFinalTransformation().cast<double>();
