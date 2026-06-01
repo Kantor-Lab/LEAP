@@ -9,12 +9,11 @@ from launch_ros.actions import Node
 
 def generate_launch_description():
     pkg_leap_control = get_package_share_directory('leap_control')
-    pkg_leap_icp = get_package_share_directory('leap_icp')
 
     control_launch_path = os.path.join(pkg_leap_control, 'launch', 'amiga_control.launch.py')
     ekf_local_config = os.path.join(pkg_leap_control, 'config', 'ekf_local.yaml')
     ekf_global_config = os.path.join(pkg_leap_control, 'config', 'ekf_global.yaml')
-    map_path = os.path.join(pkg_leap_icp, 'maps', 'cmu.ply')
+    map_path = os.path.join(pkg_leap_control, 'maps', 'cmu.ply')
 
     map_ply_arg = DeclareLaunchArgument(
         'map_ply',
@@ -92,6 +91,16 @@ def generate_launch_description():
         }]
     )
 
+    # ply_pub_node = Node(
+    #     package='leap_control',
+    #     executable='ply_publisher',
+    #     name='ply_publisher',
+    #     output='screen',
+    #     parameters=[{
+    #         'map_ply_path': LaunchConfiguration('map_ply')
+    #     }]
+    # )
+
     ld = LaunchDescription()
     ld.add_action(map_ply_arg)
     ld.add_action(use_gps_init_arg)
@@ -101,5 +110,6 @@ def generate_launch_description():
     ld.add_action(ekf_global_node)
     ld.add_action(navsat_transform_node)
     ld.add_action(icp_node)
+    ld.add_action(ply_pub_node)
 
     return ld
