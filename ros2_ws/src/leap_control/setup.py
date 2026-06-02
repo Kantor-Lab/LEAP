@@ -21,6 +21,8 @@ setup(
 
         (os.path.join('share', package_name, 'config'), glob(os.path.join('config', '*'))),
         # ('share/' + package_name + '/launch', launch_files),
+
+        (os.path.join('share', package_name, 'maps'), glob(os.path.join('maps', '*'))),
     ],
     install_requires=['setuptools'],
     zip_safe=True,

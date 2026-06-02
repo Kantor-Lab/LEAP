@@ -88,18 +88,27 @@ def generate_launch_description():
             'vgicp_resolution': 1,
             'vgicp_max_iterations': 64,
             'vgicp_max_corresp_dist': 1.5,
+
+            # --- Initialization Parameters ---
+            'init_mode': 'position_only',
+            'init_x': 0.0,
+            'init_y': 2.0,
+            
+            # Heading tuning parameters
+            'init_heading_candidates': 16,
+            'init_search_max_iter': 20,
         }]
     )
 
-    # ply_pub_node = Node(
-    #     package='leap_control',
-    #     executable='ply_publisher',
-    #     name='ply_publisher',
-    #     output='screen',
-    #     parameters=[{
-    #         'map_ply_path': LaunchConfiguration('map_ply')
-    #     }]
-    # )
+    ply_pub_node = Node(
+        package='leap_control',
+        executable='ply_publisher',
+        name='ply_publisher',
+        output='screen',
+        parameters=[{
+            'map_ply_path': LaunchConfiguration('map_ply')
+        }]
+    )
 
     ld = LaunchDescription()
     ld.add_action(map_ply_arg)
@@ -110,6 +119,6 @@ def generate_launch_description():
     ld.add_action(ekf_global_node)
     ld.add_action(navsat_transform_node)
     ld.add_action(icp_node)
-    ld.add_action(ply_pub_node)
+    # ld.add_action(ply_pub_node)
 
     return ld

@@ -52,16 +52,16 @@ ekf_global_filter_node:
     twist0_differential: false
     twist0_relative: false
 
-    # ============================================
-    # GPS Configuration (/odometry/gps, post navsat_transform_node)
-    # ============================================
-    # odom0: /odometry/gps
-    # odom0_config: [true,  true, false,   # GPS gives absolute X, Y
-    #               false, false, false,
-    #               false, false, false,
-    #               false, false, false,
-    #               false, false, false]
-    # odom0_differential: false
+    # # ============================================
+    # # GPS Configuration (/odometry/gps, post navsat_transform_node)
+    # # ============================================
+    # # odom0: /odometry/gps
+    # # odom0_config: [true,  true, false,   # GPS gives absolute X, Y
+    # #               false, false, false,
+    # #               false, false, false,
+    # #               false, false, false,
+    # #               false, false, false]
+    # # odom0_differential: false
 
     # ============================================
     # VGICP Configuration (/cmd_vel)
