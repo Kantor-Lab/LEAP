@@ -10,7 +10,6 @@ from launch_ros.actions import Node
 def generate_launch_description():
     pkg_leap_control = get_package_share_directory('leap_control')
 
-    control_launch_path = os.path.join(pkg_leap_control, 'launch', 'amiga_control.launch.py')
     ekf_local_config = os.path.join(pkg_leap_control, 'config', 'ekf_local.yaml')
     ekf_global_config = os.path.join(pkg_leap_control, 'config', 'ekf_global.yaml')
     map_path = os.path.join(pkg_leap_control, 'maps', 'cmu.ply')
@@ -33,8 +32,8 @@ def generate_launch_description():
         description='Initial yaw in degrees'
     )
 
-    control_included_launch = IncludeLaunchDescription(
-        PythonLaunchDescriptionSource(control_launch_path)
+    control_launch = IncludeLaunchDescription(
+        PythonLaunchDescriptionSource(os.path.join(pkg_leap_control, 'launch', 'amiga_control.launch.py'))
     )
 
     ekf_local_node = Node(
@@ -84,10 +83,10 @@ def generate_launch_description():
         parameters=[{
             'map_ply_path': LaunchConfiguration('map_ply'),
             'voxel_leaf_map': 0.3,
-            'voxel_leaf_scan': 0.1,
+            'voxel_leaf_scan': 0.3,
             'vgicp_resolution': 1,
             'vgicp_max_iterations': 64,
-            'vgicp_max_corresp_dist': 1.5,
+            'vgicp_max_corresp_dist': 3.0,
 
             # --- Initialization Parameters ---
             'init_mode': 'position_only',
@@ -100,25 +99,14 @@ def generate_launch_description():
         }]
     )
 
-    ply_pub_node = Node(
-        package='leap_control',
-        executable='ply_publisher',
-        name='ply_publisher',
-        output='screen',
-        parameters=[{
-            'map_ply_path': LaunchConfiguration('map_ply')
-        }]
-    )
-
     ld = LaunchDescription()
     ld.add_action(map_ply_arg)
     ld.add_action(use_gps_init_arg)
     ld.add_action(initial_yaw_deg_arg)
-    ld.add_action(control_included_launch)
+    ld.add_action(control_launch)
     ld.add_action(ekf_local_node)
     ld.add_action(ekf_global_node)
     ld.add_action(navsat_transform_node)
     ld.add_action(icp_node)
-    # ld.add_action(ply_pub_node)
 
     return ld

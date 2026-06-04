@@ -48,6 +48,7 @@ def generate_launch_description():
 
     ld = LaunchDescription()
     ld.add_action(declare_use_sim_time)
+    ld.add_action(declare_urdf_file)
     ld.add_action(robot_state_publisher)
 
     return ld

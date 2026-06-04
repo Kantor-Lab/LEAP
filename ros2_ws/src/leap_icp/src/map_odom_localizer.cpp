@@ -5,29 +5,29 @@
  *
  * ── INITIALIZATION MODES (param: "init_mode") ────────────────────────────────
  *
- *  "tf_prior"      Original behaviour. Requires the EKF to publish
- *                  map→base_link before the first scan can be processed.
+ * "tf_prior"      Original behaviour. Requires the EKF to publish
+ * map→base_link before the first scan can be processed.
  *
- *  "full_pose"     You know x, y, and yaw (heading in radians).
- *                  Set init_x, init_y, init_yaw.  One ICP call locks in the
- *                  pose and seeds the EKF; normal TF-prior tracking follows.
+ * "full_pose"     You know x, y, and yaw (heading in radians).
+ * Set init_x, init_y, init_yaw.  One ICP call locks in the
+ * pose and seeds the EKF; normal TF-prior tracking follows.
  *
- *  "position_only" You know x and y but NOT the heading.
- *                  Set init_x, init_y.  The node tries init_heading_candidates
- *                  evenly-spaced yaws (coarse ICP each), picks the best, then
- *                  refines with a full-resolution ICP.
+ * "position_only" You know x and y but NOT the heading.
+ * Set init_x, init_y.  The node tries init_heading_candidates
+ * evenly-spaced yaws (coarse ICP each), picks the best, then
+ * refines with a full-resolution ICP.
  *
- *  "global"        No prior at all.  A grid of init_search_step metres is
- *                  built over every occupied map cell; a full heading sweep is
- *                  run at each cell.  The best candidate is then refined.
- *                  ⚠ Can take 10–90 s on large maps — this is expected.
+ * "global"        No prior at all.  A grid of init_search_step metres is
+ * built over every occupied map cell; a full heading sweep is
+ * run at each cell.  The best candidate is then refined.
+ * ⚠ Can take 10–90 s on large maps — this is expected.
  *
  * ── TRACKING (all modes) ──────────────────────────────────────────────────────
- *  Once initialization succeeds the node enters TRACKING state:
- *    1. Try to get map→base_link from the EKF TF tree as the ICP prior.
- *    2. If TF is unavailable (EKF still cold-starting), fall back to the last
- *       accepted pose.  (TF_PRIOR mode skips this fallback — original behaviour.)
- *    3. Publish PoseWithCovarianceStamped for the EKF on every good scan.
+ * Once initialization succeeds the node enters TRACKING state:
+ * 1. Try to get map→base_link from the EKF TF tree as the ICP prior.
+ * 2. If TF is unavailable (EKF still cold-starting), fall back to the last
+ * accepted pose.  (TF_PRIOR mode skips this fallback — original behaviour.)
+ * 3. Publish PoseWithCovarianceStamped for the EKF on every good scan.
  */
 
 #include <rclcpp/rclcpp.hpp>
@@ -136,11 +136,16 @@ private:
         declare_parameter("lidar_topic",            "/ouster/points");
         declare_parameter("map_ply_path",           "");
         declare_parameter("voxel_leaf_map",         0.3);
-        declare_parameter("voxel_leaf_scan",        0.1);
+        declare_parameter("voxel_leaf_scan",        0.3);
         declare_parameter("vgicp_resolution",       1);
         declare_parameter("vgicp_max_iterations",   64);
-        declare_parameter("vgicp_max_corresp_dist", 1.5);
-        declare_parameter("max_fitness_accept",     0.5);
+        declare_parameter("vgicp_max_corresp_dist", 3.0);
+        declare_parameter("max_fitness_accept",     0.2);
+
+        // Submap and cropping configs
+        declare_parameter("scan_crop_radius",       35.0);
+        declare_parameter("submap_radius",          100.0);
+        declare_parameter("submap_update_dist",     20.0);
 
         // ── Initialization mode ──────────────────────────────────────────────
         // "tf_prior" | "full_pose" | "position_only" | "global"
@@ -175,6 +180,10 @@ private:
         voxel_leaf_map_  = get_parameter("voxel_leaf_map").as_double();
         voxel_leaf_scan_ = get_parameter("voxel_leaf_scan").as_double();
         max_fitness_     = get_parameter("max_fitness_accept").as_double();
+
+        scan_crop_radius_   = get_parameter("scan_crop_radius").as_double();
+        submap_radius_      = get_parameter("submap_radius").as_double();
+        submap_update_dist_ = get_parameter("submap_update_dist").as_double();
 
         vgicp_resolution_ = get_parameter("vgicp_resolution").as_int();
         vgicp_max_iter_   = get_parameter("vgicp_max_iterations").as_int();
@@ -268,9 +277,9 @@ private:
             raw_xyzi->push_back(pi);
         }
 
-        map_cloud_ = downsample(raw_xyzi, voxel_leaf_map_);
+        global_map_ = downsample(raw_xyzi, voxel_leaf_map_);
         RCLCPP_INFO(get_logger(), "Map loaded: %zu pts (downsampled from %zu)",
-            map_cloud_->size(), raw_xyzi->size());
+            global_map_->size(), raw_xyzi->size());
 
         // Pre-compute bbox (needed for logging in global search)
         computeMapBBox();
@@ -280,7 +289,7 @@ private:
     {
         map_min_x_ = map_min_y_ =  std::numeric_limits<float>::max();
         map_max_x_ = map_max_y_ = -std::numeric_limits<float>::max();
-        for (const auto & pt : *map_cloud_) {
+        for (const auto & pt : *global_map_) {
             map_min_x_ = std::min(map_min_x_, pt.x);
             map_max_x_ = std::max(map_max_x_, pt.x);
             map_min_y_ = std::min(map_min_y_, pt.y);
@@ -312,7 +321,8 @@ private:
 #else
         RCLCPP_INFO(get_logger(), "Matcher: cuVGICP (CUDA GPU)");
 #endif
-        vgicp_->setInputTarget(map_cloud_);
+        // Set the global map by default (needed immediately if GLOBAL init mode is used)
+        vgicp_->setInputTarget(global_map_);
 
         pub_ekf_reset_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
             ekf_reset_topic_, rclcpp::QoS(1).reliable());
@@ -326,10 +336,11 @@ private:
     {
         const rclcpp::Time stamp = msg->header.stamp;
 
-        // Transform scan into base_link frame and downsample.
+        // Transform scan into base_link frame, crop, and downsample.
         auto scan_base = toBaseFrame(msg, stamp);
         if (!scan_base) return;
-        const auto scan_ds = downsample(*scan_base, voxel_leaf_scan_);
+        auto scan_cropped = cropCloud(scan_base.value(), scan_crop_radius_);
+        const auto scan_ds = downsample(scan_cropped, voxel_leaf_scan_);
 
         // ── First-scan bootstrap ─────────────────────────────────────────────
         if (state_ == LocalizerState::NEEDS_INIT) {
@@ -340,6 +351,9 @@ private:
         // ── Normal tracking ──────────────────────────────────────────────────
         auto prior = getPrior(stamp);
         if (!prior) return;
+
+        // Ensure VGICP is matching against a dynamic local submap instead of the global map
+        updateLocalMap(prior->translation());
 
         // fast_gicp caches source covariances after the first setInputSource call,
         // so re-setting with the same cloud on every tick is fine (no-op if the
@@ -385,6 +399,7 @@ private:
 
             // ── MODE 1: Full pose known ───────────────────────────────────────
             case InitMode::FULL_POSE: {
+                updateLocalMap(Eigen::Vector3d(init_x_, init_y_, 0.0));
                 auto guess = makeXYYaw(init_x_, init_y_, init_yaw_);
                 auto [pose, fitness] = tryAlignAt(guess, vgicp_max_iter_);
 
@@ -407,6 +422,7 @@ private:
 
             // ── MODE 2: Position known, heading unknown ───────────────────────
             case InitMode::POSITION_ONLY: {
+                updateLocalMap(Eigen::Vector3d(init_x_, init_y_, 0.0));
                 auto coarse = headingSweep(init_x_, init_y_);
                 if (!coarse) return;  // warning already logged inside sweep
 
@@ -424,6 +440,7 @@ private:
 
             // ── MODE 3: Nothing known — grid search ───────────────────────────
             case InitMode::GLOBAL: {
+                // Relies on global_map_ (which is pre-set in buildVGICP)
                 auto coarse = globalSearch();
                 if (!coarse) return;  // warning already logged inside search
 
@@ -529,8 +546,8 @@ private:
         };
 
         std::unordered_set<uint64_t> occupied;
-        occupied.reserve(map_cloud_->size());
-        for (const auto & pt : *map_cloud_)
+        occupied.reserve(global_map_->size());
+        for (const auto & pt : *global_map_)
             occupied.insert(cellKey(pt.x, pt.y));
 
         // Convert cells back to metric centre positions
@@ -662,6 +679,46 @@ private:
     //  Utilities
     // =========================================================================
 
+    pcl::PointCloud<pcl::PointXYZI>::Ptr cropCloud(
+        const pcl::PointCloud<pcl::PointXYZI>::Ptr & in, double max_radius)
+    {
+        auto out = std::make_shared<pcl::PointCloud<pcl::PointXYZI>>();
+        out->reserve(in->size());
+        const double r2 = max_radius * max_radius;
+        
+        for (const auto & pt : *in) {
+            if ((pt.x * pt.x + pt.y * pt.y) <= r2) {
+                out->push_back(pt);
+            }
+        }
+        return out;
+    }
+
+    void updateLocalMap(const Eigen::Vector3d & current_pos)
+    {
+        // Check if we've moved far enough to justify updating the map
+        if ((current_pos - last_submap_center_).norm() < submap_update_dist_) {
+            return; 
+        }
+
+        auto local_map = std::make_shared<pcl::PointCloud<pcl::PointXYZI>>();
+        const double r2 = submap_radius_ * submap_radius_;
+
+        for (const auto & pt : *global_map_) {
+            double dx = pt.x - current_pos.x();
+            double dy = pt.y - current_pos.y();
+            if ((dx*dx + dy*dy) <= r2) {
+                local_map->push_back(pt);
+            }
+        }
+
+        // Give the lean, local map to VGICP
+        vgicp_->setInputTarget(local_map);
+        last_submap_center_ = current_pos;
+        
+        RCLCPP_INFO(get_logger(), "[Map] Updated local submap: %zu points", local_map->size());
+    }
+
     pcl::PointCloud<pcl::PointXYZI>::Ptr
     downsample(const pcl::PointCloud<pcl::PointXYZI>::Ptr & in, double leaf)
     {
@@ -718,7 +775,7 @@ private:
         msg.pose.pose.orientation.w = q.w();
 
         // Baseline covariance consumed by the EKF
-        double cov = 0.01 + (0.1 * fitness);  // increase covariance for worse fits (tunable)
+        double cov = 0.01 + (0.1 * fitness);  // increase covariance for worse fits
         msg.pose.covariance[0]  = cov;  // X
         msg.pose.covariance[7]  = cov;  // Y
         msg.pose.covariance[14] = cov;  // Z
@@ -748,6 +805,7 @@ private:
     std::string map_frame_, base_frame_, lidar_topic_, map_ply_path_;
     double      voxel_leaf_map_, voxel_leaf_scan_, vgicp_corr_dist_, max_fitness_;
     int         vgicp_resolution_, vgicp_max_iter_;
+    double      scan_crop_radius_, submap_radius_, submap_update_dist_;
 
     // ── Init config ──────────────────────────────────────────────────────────
     InitMode init_mode_               = InitMode::TF_PRIOR;
@@ -766,7 +824,8 @@ private:
 
     // ── Map & matcher ─────────────────────────────────────────────────────────
     std::shared_ptr<VGICPVariant>        vgicp_;
-    pcl::PointCloud<pcl::PointXYZI>::Ptr map_cloud_;
+    pcl::PointCloud<pcl::PointXYZI>::Ptr global_map_;
+    Eigen::Vector3d                      last_submap_center_{std::numeric_limits<double>::max(), 0.0, 0.0};
     float map_min_x_{0}, map_max_x_{0}, map_min_y_{0}, map_max_y_{0};
 };
 

@@ -2,22 +2,22 @@
 <robot name="amiga_base" xmlns:xacro="http://www.ros.org/wiki/xacro">
 
   <link name="base_link">
-    <inertial>
-      <origin xyz="-0.054481 -0.015972 0.66252" rpy="0 0 0" />
-      <mass value="381.19" />
+    <inertial>  <!-- Guess -->
+      <origin xyz="0 0 0" rpy="0 0 0" />
+      <mass value="75" />
       <inertia ixx="5.717" ixy="-0.007109" ixz="0.0013622" iyy="12.857" iyz="1.2354E-05" izz="11.799" />
     </inertial>
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/frame_link.STL" />
+        <mesh filename="package://leap_desc/meshes/Frame.STL" />
       </geometry>
       <material name=""><color rgba="0.118 0.506 0.729 1" /></material>
     </visual>
     <collision>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/frame_collision.STL"  />
+        <mesh filename="package://leap_desc/meshes/Frame.STL"  />
       </geometry>
     </collision>
   </link>
@@ -27,200 +27,71 @@
     <parent link="base_link" />
     <child link="base_footprint" />
   </joint>
-
-  <link name="FL_wheel">
-    <inertial>
-      <origin xyz="4.3098E-07 5.5068E-07 -0.00020749" rpy="0 0 0" />
-      <mass value="15.628" />
-      <inertia ixx="0.153" ixy="1.1085E-06" ixz="2.7485E-07" iyy="0.153" iyz="2.341E-07" izz="0.28441" />
-    </inertial>
+  
+  <link name="sensor_mount">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/wheel.STL" />
-      </geometry>
-      <material name=""><color rgba="0 0 0 1" /></material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/wheel_collision.STL" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="FL_wheel_j" type="continuous">
-    <origin xyz="0.2658 0.32928 0.2159" rpy="1.5708 0 3.1416" />
-    <parent link="base_link" />
-    <child link="FL_wheel" />
-    <axis xyz="0 0 1" />
-  </joint>
-
-  <link name="FR_wheel">
-    <inertial>
-      <origin xyz="4.3153E-07 5.4433E-07 -0.00020748" rpy="0 0 0" />
-      <mass value="15.628" />
-      <inertia ixx="0.153" ixy="1.1081E-06" ixz="2.8146E-07" iyy="0.153" iyz="2.3106E-07" izz="0.28441" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/wheel.STL" />
-      </geometry>
-      <material name=""><color rgba="0 0 0 1" /></material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/wheel_collision.STL" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="FR_wheel_j" type="continuous">
-    <origin xyz="0.2658 -0.32928 0.2159" rpy="1.5708 0 3.1416" />
-    <parent link="base_link" />
-    <child link="FR_wheel" />
-    <axis xyz="0 0 1" />
-  </joint>
-
-  <link name="RL_wheel">
-    <inertial>
-      <origin xyz="4.2324E-07 5.6831E-07 -0.00020749" rpy="0 0 0" />
-      <mass value="15.628" />
-      <inertia ixx="0.153" ixy="1.0985E-06" ixz="2.7036E-07" iyy="0.153" iyz="2.4709E-07" izz="0.28441" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/wheel.STL" />
-      </geometry>
-      <material name=""><color rgba="0 0 0 1" /></material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/wheel_collision.STL" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="RL_wheel_j" type="continuous">
-    <origin xyz="-0.2658 0.32928 0.2159" rpy="1.5708 0 3.1416" />
-    <parent link="base_link" />
-    <child link="RL_wheel" />
-    <axis xyz="0 0 1" />
-  </joint>
-
-  <link name="RR_wheel">
-    <inertial>
-      <origin xyz="4.3464E-07 5.6185E-07 -0.00020748" rpy="0 0 0" />
-      <mass value="15.628" />
-      <inertia ixx="0.153" ixy="1.11E-06" ixz="2.6707E-07" iyy="0.153" iyz="2.4203E-07" izz="0.28441" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/wheel.STL" />
-      </geometry>
-      <material name=""><color rgba="0 0 0 1" /></material>
-    </visual>
-    <collision>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/wheel_collision.STL" />
-      </geometry>
-    </collision>
-  </link>
-  <joint name="RR_wheel_j" type="continuous">
-    <origin xyz="-0.2658 -0.32928 0.2159" rpy="1.5708 0 3.1416" />
-    <parent link="base_link" />
-    <child link="RR_wheel" />
-    <axis xyz="0 0 1" />
-  </joint>
-
-  <joint name="slam_rig_mount_j" type="fixed">
-    <origin xyz="1.15 0.0 1.4" rpy="0 0 0" /> 
-    <parent link="base_link" />
-    <child link="slam_rig_base" />
-  </joint>
-
-  <link name="slam_rig_base">
-    <inertial>
-      <origin xyz="0.00050244 -1.1359E-06 0.030259" rpy="0 0 0" />
-      <mass value="0.45272" />
-      <inertia ixx="0.00025259" ixy="6.6853E-10" ixz="4.4531E-09" iyy="0.00024478" iyz="8.6751E-09" izz="0.00034312" />
-    </inertial>
-    <visual>
-      <origin xyz="0 0 0" rpy="0 0 0" />
-      <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/slam_rig_base.STL" />
+        <mesh filename="package://leap_desc/meshes/SensorMount.STL" />
       </geometry>
       <material name=""><color rgba="0.75294 0.75294 0.75294 1" /></material>
     </visual>
   </link>
+  <joint name="sensor_mount_j" type="fixed">
+    <origin xyz="-0.038587 0.0 0.340947" rpy="0 0 0" /> 
+    <parent link="base_link" />
+    <child link="sensor_mount" />
+  </joint>
 
-  <link name="os_sensor">
-    <inertial>
-      <origin xyz="-0.00086216 5.9592E-07 -0.034859" rpy="0 0 0" />
-      <mass value="0.83485" />
-      <inertia ixx="0.00063587" ixy="-1.6822E-07" ixz="-5.9486E-07" iyy="0.00063646" iyz="-1.1344E-08" izz="0.0010771" />
-    </inertial>
+  <link name="ouster">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/ouster_lidar.STL" />
+        <mesh filename="package://leap_desc/meshes/Ouster.STL" />
       </geometry>
       <material name=""><color rgba="0.79216 0.81961 0.93333 1" /></material>
     </visual>
   </link>
-  <joint name="ouster_lider_j" type="fixed">
-    <origin xyz="0 0 0.10803" rpy="0 0 0" />
-    <parent link="slam_rig_base" />
-    <child link="os_sensor" />
+  <joint name="ouster_j" type="fixed">
+    <origin xyz="0.000233 0 0.047625" rpy="0 0 0" />
+    <parent link="sensor_mount" />
+    <child link="ouster" />
   </joint>
 
-  <link name="RTK_gnss">
-    <inertial>
-      <origin xyz="8.6318E-08 1.3433E-08 -0.0064338" rpy="0 0 0" />
-      <mass value="0.046078" />
-      <inertia ixx="1.714E-05" ixy="-1.4122E-13" ixz="1.4571E-11" iyy="1.7117E-05" iyz="-4.7803E-12" izz="5.3861E-06" />
-    </inertial>
+  <link name="reach">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/RTK_gnss.STL"  />
+        <mesh filename="package://leap_desc/meshes/Reach.STL"  />
       </geometry>
       <material name=""><color rgba="0.79216 0.81961 0.93333 1" /></material>
     </visual>
   </link>
-  <joint name="RTK_gnss_j" type="fixed">
-    <origin xyz="0 0 0.21003" rpy="0 0 0" />
-    <parent link="slam_rig_base" />
-    <child link="RTK_gnss" />
+  <joint name="reach_j" type="fixed">
+    <origin xyz="0.000233 0 0.148475" rpy="0 0 0" />
+    <parent link="sensor_mount" />
+    <child link="reach" />
   </joint>
 
-  <link name="camera">
-    <inertial>
-      <origin xyz="0.0013543 0.00036269 -0.00015622" rpy="0 0 0" />
-      <mass value="0.057213" />
-      <inertia ixx="5.9656E-06" ixy="4.8795E-08" ixz="5.2047E-08" iyy="9.9336E-06" iyz="-1.881E-08" izz="9.9952E-06" />
-    </inertial>
+  <link name="blackfly">
     <visual>
       <origin xyz="0 0 0" rpy="0 0 0" />
       <geometry>
-        <mesh filename="file://$(find leap_desc)/meshes/camera.STL" />
+        <mesh filename="package://leap_desc/meshes/Blackfly.STL" />
       </geometry>
       <material name=""><color rgba="0.75294 0.75294 0.75294 1" /></material>
     </visual>
   </link>
-  <joint name="camera_j" type="fixed">
-    <origin xyz="0.049532 0 0.02659" rpy="0 0 0" />
-    <parent link="slam_rig_base" />
-    <child link="camera" />
+  <joint name="blackfly_j" type="fixed">
+    <origin xyz="0.033516 0 0.012340" rpy="0 0 0" />
+    <parent link="sensor_mount" />
+    <child link="blackfly" />
   </joint>
 
   <link name="camera_optical" />
   <joint name="camera_optical_j" type="fixed">
     <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708" />
-    <parent link="camera" />
+    <parent link="blackfly" />
     <child link="camera_optical" />
   </joint>
 

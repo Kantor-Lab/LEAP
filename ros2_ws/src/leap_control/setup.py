@@ -37,7 +37,6 @@ setup(
             'cmdvel_relay = leap_control.cmdvel_relay:main',
             'imu_calibration = leap_control.imu_calibration:main',
             'imu_relay = leap_control.imu_relay:main',
-            'ply_publisher = leap_control.ply_publisher:main',
         ],
     },
 )
