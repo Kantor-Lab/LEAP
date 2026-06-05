@@ -55,7 +55,7 @@ ouster/os_driver:
     accel_fsr: ''
     # metadata[optional]: path to save metadata file to, if left empty a file
     # with the sensor hostname or ip will be created in ~/.ros folder.
-    metadata: '/src/leap_sensors/config/ouster_metadata.json'
+    metadata: '/home/slam_rig/LEAP/ros2_ws/src/leap_sensors/config/ouster_metadata.json'
     # lidar_port[optional]: port value should be in the range [0, 65535]. If you
     # use 0 as the port value then the first available port number will be
     # assigned.

@@ -81,6 +81,8 @@ def generate_launch_description():
         name='map_odom_localizer',
         output='screen',
         parameters=[{
+            'base_frame': 'base_footprint',
+
             'map_ply_path': LaunchConfiguration('map_ply'),
             'voxel_leaf_map': 0.3,
             'voxel_leaf_scan': 0.3,
@@ -90,8 +92,8 @@ def generate_launch_description():
 
             # --- Initialization Parameters ---
             'init_mode': 'position_only',
-            'init_x': 0.0,
-            'init_y': 2.0,
+            'init_x': 22.0,
+            'init_y': 121.0,
             
             # Heading tuning parameters
             'init_heading_candidates': 16,
