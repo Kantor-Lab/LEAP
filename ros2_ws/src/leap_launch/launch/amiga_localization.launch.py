@@ -3,6 +3,7 @@ import os
 from ament_index_python.packages import get_package_share_directory
 from launch import LaunchDescription
 from launch.actions import IncludeLaunchDescription, DeclareLaunchArgument
+from launch.conditions import IfCondition, UnlessCondition
 from launch.substitutions import LaunchConfiguration
 from launch.launch_description_sources import PythonLaunchDescriptionSource
 from launch_ros.actions import Node
@@ -14,6 +15,12 @@ def generate_launch_description():
     ekf_global_config = os.path.join(pkg_leap_control, 'config', 'ekf_global.yaml')
     map_path = os.path.join(pkg_leap_control, 'maps', 'cmu.ply')
     terrain_path = os.path.join(pkg_leap_control, 'maps', 'cmu_dtm.ply')
+
+    use_map_arg = DeclareLaunchArgument(
+        'use_map',
+        default_value='true',
+        description='Whether to use the map frame'
+    )
 
     map_ply_arg = DeclareLaunchArgument(
         'map_ply',
@@ -29,7 +36,7 @@ def generate_launch_description():
 
     use_gps_init_arg = DeclareLaunchArgument(
         'use_gps_init',
-        default_value='true',
+        default_value='false',
         description='Use GPS for initial localization'
     )
 
@@ -59,7 +66,8 @@ def generate_launch_description():
         output='screen',
         remappings=[
             ('odometry/filtered', '/odometry/global')
-        ]
+        ],
+        condition=IfCondition(LaunchConfiguration('use_map'))
     )
 
     navsat_transform_node = Node(
@@ -79,7 +87,8 @@ def generate_launch_description():
         }],
         remappings=[
             ('odometry/filtered', '/odometry/global')
-        ]
+        ],
+        condition=IfCondition(LaunchConfiguration('use_map'))
     )
 
     icp_node = Node(
@@ -106,10 +115,21 @@ def generate_launch_description():
             # Heading tuning parameters
             'init_heading_candidates': 16,
             'init_search_max_iter': 20,
-        }]
+        }],
+        condition=IfCondition(LaunchConfiguration('use_map'))
+    )
+
+    static_tf_map_odom_node = Node(
+        package='tf2_ros',
+        executable='static_transform_publisher',
+        name='static_tf_map_odom',
+        # Arguments are: x, y, z, roll, pitch, yaw, frame_id, child_frame_id
+        arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom'],
+        condition=UnlessCondition(LaunchConfiguration('use_map'))
     )
 
     ld = LaunchDescription()
+    ld.add_action(use_map_arg)
     ld.add_action(map_ply_arg)
     ld.add_action(terrain_ply_arg)
     ld.add_action(use_gps_init_arg)
@@ -119,5 +139,5 @@ def generate_launch_description():
     ld.add_action(ekf_global_node)
     ld.add_action(navsat_transform_node)
     ld.add_action(icp_node)
-
+    ld.add_action(static_tf_map_odom_node)
     return ld
