@@ -14,6 +14,15 @@ import signal
 import time
 from datetime import datetime
 
+# Attempt to import rclpy for native node subscription
+try:
+    import rclpy
+    from rclpy.node import Node
+    from sensor_msgs.msg import NavSatFix
+    RCLPY_AVAILABLE = True
+except ImportError:
+    RCLPY_AVAILABLE = False
+
 # ═══════════════════════════════════════════════════════════
 #  CONFIG — edit to match your setup
 # ═══════════════════════════════════════════════════════════
@@ -131,6 +140,64 @@ def open_session_log():
 
 
 # ═══════════════════════════════════════════════════════════
+#  ROS 2 GPS WORKER
+# ═══════════════════════════════════════════════════════════
+class GPSWorker:
+    """Runs a ROS 2 subscriber in a background thread."""
+    def __init__(self, callback, log_fn):
+        self.callback = callback
+        self.log_fn = log_fn
+        self.node = None
+        self.running = False
+        self.thread = None
+
+    def start(self):
+        if self.running or not RCLPY_AVAILABLE: return
+        self.running = True
+        self.thread = threading.Thread(target=self._run_ros, daemon=True)
+        self.thread.start()
+
+    def stop(self):
+        if not self.running: return
+        self.running = False
+        if self.node:
+            self.node.destroy_node()
+            self.node = None
+
+    def _run_ros(self):
+        try:
+            if not rclpy.ok():
+                rclpy.init()
+            self.node = Node('gui_gps_status_node')
+            self.node.create_subscription(NavSatFix, '/fix', self._listener_callback, 10)
+            self.log_fn("[GPS] Subscriber thread started", "system")
+
+            while self.running and rclpy.ok():
+                try:
+                    rclpy.spin_once(self.node, timeout_sec=0.1)
+                except rclpy.executors.ExternalShutdownException:
+                    break
+        except Exception as e:
+            self.log_fn(f"[GPS] Worker error: {e}", "error")
+        finally:
+            if self.node:
+                self.node.destroy_node()
+
+    def _listener_callback(self, msg):
+        status_val = msg.status.status
+        covariance = msg.position_covariance
+
+        if status_val < 0:
+            gps_status = 'NO FIX'
+        elif sum(covariance) < 0.5:
+            gps_status = 'FIX'
+        else:
+            gps_status = 'FLOAT'
+
+        self.callback(gps_status)
+
+
+# ═══════════════════════════════════════════════════════════
 #  PROCESS MANAGER
 # ═══════════════════════════════════════════════════════════
 class ProcessManager:
@@ -204,6 +271,10 @@ class RobotLauncherApp:
             s["id"]: {t["id"]: tk.BooleanVar(value=False) for t in s["toggles"]}
             for s in SUBSYSTEMS
         }
+        
+        # GPS State variables
+        self.gps_worker = None
+        self.gps_last_msg_time = 0
 
         self._build_window()
         self._start_clock()
@@ -212,6 +283,9 @@ class RobotLauncherApp:
         self._log(f"ROS setup  : {ROS_SETUP_SCRIPT}", "info")
         self._log(f"Session log: {self._session_log.name}", "info")
         self._log("Awaiting operator input...", "info")
+        
+        if not RCLPY_AVAILABLE:
+            self._log("WARNING: rclpy not found. Source ROS to enable native GPS indicator.", "warn")
 
     # ── Window ────────────────────────────────
     def _build_window(self):
@@ -344,6 +418,24 @@ class RobotLauncherApp:
 
         for tog in sub["toggles"]:
             self._build_toggle(inner, sid, tog)
+            
+        # Inject GPS Status directly into the sensors card
+        if sid == "sensors":
+            gps_row = tk.Frame(inner, bg=C["panel"])
+            gps_row.pack(fill="x", pady=(6, 0))
+            tk.Label(
+                gps_row, text="GPS STATUS:", 
+                font=self.font_small, bg=C["panel"], fg=C["border_hi"]
+            ).pack(side="left")
+            
+            initial_text = "[ OFF ]" if RCLPY_AVAILABLE else "[ NO RCLPY ]"
+            initial_color = C["grey"] if RCLPY_AVAILABLE else C["red_dark"]
+            
+            self.gps_label = tk.Label(
+                gps_row, text=initial_text, 
+                font=self.font_small, bg=C["panel"], fg=initial_color
+            )
+            self.gps_label.pack(side="right")
 
         return outer
 
@@ -549,6 +641,14 @@ class RobotLauncherApp:
                 continue
             cmd = self._build_cmd(sub)
             self._log(f"STARTING {sub['label']}: {cmd}", "start")
+            
+            # Start GPS watchdog if SENSORS launched
+            if sid == "sensors" and RCLPY_AVAILABLE:
+                if not self.gps_worker:
+                    self.gps_worker = GPSWorker(self._update_gps_status, self._log)
+                self.gps_worker.start()
+                self.gps_last_msg_time = time.time()
+                self._gps_watchdog()
 
             def _do(s=sub, c=cmd):
                 ok = self.pm.launch(s["id"], c, self._log)
@@ -563,6 +663,13 @@ class RobotLauncherApp:
         self._log("=" * 52, "stop")
         self._log("STOP ALL INITIATED", "stop")
         self._log("=" * 52, "stop")
+        
+        # Shut down GPS tools
+        if self.gps_worker:
+            self.gps_worker.stop()
+            self.gps_worker = None
+        if hasattr(self, 'gps_label') and RCLPY_AVAILABLE:
+            self.gps_label.config(text="[ OFF ]", fg=C["grey"])
 
         def _do():
             self.pm.kill_all(self._log)
@@ -572,6 +679,27 @@ class RobotLauncherApp:
             self.root.after(1100, self._update_control_buttons)
 
         threading.Thread(target=_do, daemon=True).start()
+
+    # ── GPS Methods ───────────────────────────
+    def _update_gps_status(self, status):
+        colors = {"FIX": C["green"], "FLOAT": C["amber"], "NO FIX": C["red"]}
+        color = colors.get(status, C["grey"])
+        
+        def _do():
+            self.gps_last_msg_time = time.time()
+            if hasattr(self, 'gps_label'):
+                self.gps_label.config(text=f"[ {status} ]", fg=color)
+        self.root.after(0, _do)
+
+    def _gps_watchdog(self):
+        # Stop watchdog looping if worker stopped
+        if not self.gps_worker or not self.gps_worker.running: return
+        
+        if time.time() - self.gps_last_msg_time > 5.0:
+            if hasattr(self, 'gps_label'):
+                self.gps_label.config(text="[ TIMEOUT ]", fg=C["red_dim"])
+        
+        self.root.after(1000, self._gps_watchdog)
 
     # ── Periodic updates ──────────────────────
     def _start_clock(self):
@@ -597,6 +725,8 @@ class RobotLauncherApp:
 
     def on_close(self):
         self._log("Shutting down all processes...", "warn")
+        if self.gps_worker:
+            self.gps_worker.stop()
         self.pm.kill_all(self._log)
         time.sleep(0.5)
         try:
