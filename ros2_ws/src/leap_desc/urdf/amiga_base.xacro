@@ -54,7 +54,7 @@
     </visual>
   </link>
   <joint name="ouster_j" type="fixed">
-    <origin xyz="0.000233 0 0.047625" rpy="0 0 0" />
+    <origin xyz="0.000233 0 0.108065" rpy="0 0 0" />
     <parent link="sensor_mount" />
     <child link="ouster" />
   </joint>
@@ -89,11 +89,11 @@
     <child link="blackfly" />
   </joint>
 
-  <link name="camera_optical" />
-  <joint name="camera_optical_j" type="fixed">
+  <link name="blackfly_optical" />
+  <joint name="blackfly_optical_j" type="fixed">
     <origin xyz="0 0 0" rpy="-1.5708 0 -1.5708" />
     <parent link="blackfly" />
-    <child link="camera_optical" />
+    <child link="blackfly_optical" />
   </joint>
 
 </robot>

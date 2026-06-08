@@ -103,7 +103,7 @@ Visualization Manager:
           Alpha: 1
           Show Axes: false
           Show Trail: false
-        camera_optical:
+        blackfly_optical:
           Alpha: 1
           Show Axes: false
           Show Trail: false
@@ -145,7 +145,7 @@ Visualization Manager:
           Value: true
         camera:
           Value: true
-        camera_optical:
+        blackfly_optical:
           Value: true
         map:
           Value: true
@@ -171,7 +171,7 @@ Visualization Manager:
               base_footprint: {}
               slam_rig_base:
                 camera:
-                  camera_optical: {}
+                  blackfly_optical: {}
                 os_sensor: {}
                 RTK_gnss: {}
       Update Interval: 0

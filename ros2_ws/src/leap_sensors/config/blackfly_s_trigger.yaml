@@ -1,8 +1,8 @@
 flir_camera:
   ros__parameters:
     ## general ROS paramters:
-    # 'frame_id': 'camera_optical'
-    'frame_id': 'camera_calibrated'
+    # 'frame_id': 'blackfly_optical'
+    'frame_id': 'blackfly_calibrated'
     ## flir parameters:
     'debug': False
     'compute_brightness': False

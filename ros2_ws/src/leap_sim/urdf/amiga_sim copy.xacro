@@ -23,7 +23,7 @@
       <update_rate>10</update_rate>
       <visualize>true</visualize>
       <topic>camera/image_raw</topic>
-      <gz_frame_id>camera_optical</gz_frame_id>
+      <gz_frame_id>blackfly_optical</gz_frame_id>
     </sensor>
   </gazebo>
 
