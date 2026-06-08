@@ -83,6 +83,13 @@ SUBSYSTEMS = [
         "cmd": "ros2 launch leap_launch amiga_navigation.launch.py",
         "toggles": [],
     },
+    {
+        "id": "record",
+        "label": "RECORD",
+        "description": "Amiga rosbag recording stack",
+        "cmd": "ros2 launch leap_launch amiga_record.launch.py",
+        "toggles": [],
+    },
 ]
 
 # ═══════════════════════════════════════════════════════════
