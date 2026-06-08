@@ -13,11 +13,18 @@ def generate_launch_description():
     ekf_local_config = os.path.join(pkg_leap_control, 'config', 'ekf_local.yaml')
     ekf_global_config = os.path.join(pkg_leap_control, 'config', 'ekf_global.yaml')
     map_path = os.path.join(pkg_leap_control, 'maps', 'cmu.ply')
+    terrain_path = os.path.join(pkg_leap_control, 'maps', 'cmu_dtm.ply')
 
     map_ply_arg = DeclareLaunchArgument(
         'map_ply',
         default_value=map_path,
         description='Path to the map point cloud file'
+    )
+
+    terrain_ply_arg = DeclareLaunchArgument(
+        'terrain_ply',
+        default_value=terrain_path,
+        description='Path to the terrain dtm point cloud file'
     )
 
     use_gps_init_arg = DeclareLaunchArgument(
@@ -84,6 +91,7 @@ def generate_launch_description():
             'base_frame': 'base_footprint',
 
             'map_ply_path': LaunchConfiguration('map_ply'),
+            'terrain_ply_path': LaunchConfiguration('terrain_ply'),
             'voxel_leaf_map': 0.3,
             'voxel_leaf_scan': 0.3,
             'vgicp_resolution': 1,
@@ -92,8 +100,8 @@ def generate_launch_description():
 
             # --- Initialization Parameters ---
             'init_mode': 'position_only',
-            'init_x': 22.0,
-            'init_y': 121.0,
+            'init_x': 0.0,   # 22
+            'init_y': 2.0,  # 121
             
             # Heading tuning parameters
             'init_heading_candidates': 16,
@@ -103,6 +111,7 @@ def generate_launch_description():
 
     ld = LaunchDescription()
     ld.add_action(map_ply_arg)
+    ld.add_action(terrain_ply_arg)
     ld.add_action(use_gps_init_arg)
     ld.add_action(initial_yaw_deg_arg)
     ld.add_action(control_launch)

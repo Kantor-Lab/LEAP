@@ -45,6 +45,8 @@
 #include <pcl/filters/voxel_grid.h>
 #include <pcl/io/ply_io.h>
 #include <pcl/common/transforms.h>
+#include <pcl/PolygonMesh.h>
+#include <pcl/conversions.h>
 
 #ifdef USE_CUDA_VGICP
   #include <fast_vgicp/cuda/fast_vgicp_cuda.cuh>
@@ -64,6 +66,7 @@
 #include <optional>
 #include <string>
 #include <unordered_set>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -93,6 +96,16 @@ static Eigen::Isometry3d makeXYYaw(double x, double y, double yaw)
     return T;
 }
 
+/// Build a 3D Isometry3d from (x, y, z, yaw) for terrain integration.
+static Eigen::Isometry3d makeXYZYaw(double x, double y, double z, double yaw)
+{
+    Eigen::Isometry3d T = Eigen::Isometry3d::Identity();
+    T.translation()     = Eigen::Vector3d(x, y, z);
+    T.linear()          = Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ())
+                              .toRotationMatrix();
+    return T;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 //  Node
 // ─────────────────────────────────────────────────────────────────────────────
@@ -109,6 +122,7 @@ public:
         tf_listener_ = std::make_shared<tf2_ros::TransformListener>(*tf_buffer_);
 
         loadMap();
+        loadTerrainMap();
         buildVGICP();
 
         pub_pose_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
@@ -147,6 +161,10 @@ private:
         declare_parameter("submap_radius",          100.0);
         declare_parameter("submap_update_dist",     20.0);
 
+        // Terrain Mesh configs
+        declare_parameter("terrain_ply_path",           "");
+        declare_parameter("terrain_grid_resolution",    0.5);
+
         // ── Initialization mode ──────────────────────────────────────────────
         // "tf_prior" | "full_pose" | "position_only" | "global"
         declare_parameter("init_mode", "tf_prior");
@@ -184,6 +202,9 @@ private:
         scan_crop_radius_   = get_parameter("scan_crop_radius").as_double();
         submap_radius_      = get_parameter("submap_radius").as_double();
         submap_update_dist_ = get_parameter("submap_update_dist").as_double();
+
+        terrain_ply_path_        = get_parameter("terrain_ply_path").as_string();
+        terrain_grid_resolution_ = get_parameter("terrain_grid_resolution").as_double();
 
         vgicp_resolution_ = get_parameter("vgicp_resolution").as_int();
         vgicp_max_iter_   = get_parameter("vgicp_max_iterations").as_int();
@@ -304,6 +325,153 @@ private:
     }
 
     // =========================================================================
+    //  Terrain Map loading (2.5D Elevation Grid)
+    // =========================================================================
+
+    void loadTerrainMap()
+    {
+        if (terrain_ply_path_.empty()) {
+            RCLCPP_WARN(get_logger(), "No terrain mesh provided. Z will default to 0.0.");
+            return;
+        }
+
+        // loadPLYFile handles vertex + face PLY files correctly
+        pcl::PolygonMesh mesh;
+        if (pcl::io::loadPLYFile(terrain_ply_path_, mesh) < 0) {
+            RCLCPP_FATAL(get_logger(), "Failed to load terrain mesh: %s", terrain_ply_path_.c_str());
+            rclcpp::shutdown();
+            return;
+        }
+
+        // 1. Manually unpack the binary blob to bypass strict PCL type-casting
+        pcl::PointCloud<pcl::PointXYZ> verts;
+        verts.reserve(mesh.cloud.width * mesh.cloud.height);
+
+        int x_off = -1, y_off = -1, z_off = -1;
+        uint8_t datatype = 0; 
+        for (const auto & field : mesh.cloud.fields) {
+            if (field.name == "x") { x_off = field.offset; datatype = field.datatype; }
+            if (field.name == "y") { y_off = field.offset; }
+            if (field.name == "z") { z_off = field.offset; }
+        }
+
+        if (x_off == -1 || y_off == -1 || z_off == -1) {
+            RCLCPP_FATAL(get_logger(), "Terrain mesh lacks x, y, or z fields.");
+            rclcpp::shutdown();
+            return;
+        }
+
+        for (size_t i = 0; i < mesh.cloud.width * mesh.cloud.height; ++i) {
+            const uint8_t* pt_data = &mesh.cloud.data[i * mesh.cloud.point_step];
+            pcl::PointXYZ pt;
+            
+            // Handle double-precision (FLOAT64) to single-precision (FLOAT32) cast
+            if (datatype == pcl::PCLPointField::FLOAT64) {
+                pt.x = static_cast<float>(*reinterpret_cast<const double*>(pt_data + x_off));
+                pt.y = static_cast<float>(*reinterpret_cast<const double*>(pt_data + y_off));
+                pt.z = static_cast<float>(*reinterpret_cast<const double*>(pt_data + z_off));
+            } else {
+                pt.x = *reinterpret_cast<const float*>(pt_data + x_off);
+                pt.y = *reinterpret_cast<const float*>(pt_data + y_off);
+                pt.z = *reinterpret_cast<const float*>(pt_data + z_off);
+            }
+            verts.push_back(pt);
+        }
+
+        if (verts.empty()) {
+            RCLCPP_FATAL(get_logger(), "Terrain mesh has no vertices: %s", terrain_ply_path_.c_str());
+            rclcpp::shutdown();
+            return;
+        }
+
+        RCLCPP_INFO(get_logger(), "Terrain mesh: %zu vertices, %zu triangles — rasterizing…",
+            verts.size(), mesh.polygons.size());
+
+        // 2. Rasterize the faces into the 2.5D elevation grid
+        const float res = static_cast<float>(terrain_grid_resolution_);
+
+        auto cellKey = [](int32_t ix, int32_t iy) -> uint64_t {
+            return (static_cast<uint64_t>(static_cast<uint32_t>(ix)) << 32)
+                |  static_cast<uint64_t>(static_cast<uint32_t>(iy));
+        };
+
+        for (const auto & face : mesh.polygons) {
+            if (face.vertices.size() < 3) continue;
+
+            const auto & A = verts[face.vertices[0]];
+            const auto & B = verts[face.vertices[1]];
+            const auto & C = verts[face.vertices[2]];
+
+            // 2D determinant for barycentric solve (XY plane only — DTM is a height field)
+            const float det = (B.x - A.x) * (C.y - A.y) - (B.y - A.y) * (C.x - A.x);
+            if (std::abs(det) < 1e-6f) continue;   // degenerate (zero-area) triangle
+            const float inv_det = 1.0f / det;
+
+            // Grid-cell range covering this triangle's XY bounding box
+            const auto ix0 = static_cast<int32_t>(std::floor(std::min({A.x, B.x, C.x}) / res));
+            const auto ix1 = static_cast<int32_t>(std::ceil (std::max({A.x, B.x, C.x}) / res));
+            const auto iy0 = static_cast<int32_t>(std::floor(std::min({A.y, B.y, C.y}) / res));
+            const auto iy1 = static_cast<int32_t>(std::ceil (std::max({A.y, B.y, C.y}) / res));
+
+            for (int32_t ix = ix0; ix <= ix1; ++ix) {
+                for (int32_t iy = iy0; iy <= iy1; ++iy) {
+                    // Test the cell centre against the triangle
+                    const float px = (ix + 0.5f) * res;
+                    const float py = (iy + 0.5f) * res;
+
+                    const float s = ((px - A.x) * (C.y - A.y) - (py - A.y) * (C.x - A.x)) * inv_det;
+                    const float t = ((B.x - A.x) * (py - A.y) - (B.y - A.y) * (px - A.x)) * inv_det;
+                    const float r = 1.0f - s - t;
+
+                    if (s < 0.0f || t < 0.0f || r < 0.0f) continue;  // outside triangle
+
+                    // Barycentric Z interpolation
+                    elevation_grid_[cellKey(ix, iy)] = static_cast<double>(r * A.z + s * B.z + t * C.z);
+                }
+            }
+        }
+
+        RCLCPP_INFO(get_logger(), "Terrain grid rasterized: %zu cells at %.2f m/cell.", 
+            elevation_grid_.size(), terrain_grid_resolution_);
+    }
+
+    double getElevationAt(double x, double y)
+    {
+        if (elevation_grid_.empty()) return 0.0;
+
+        const double fc = x / terrain_grid_resolution_;
+        const double fr = y / terrain_grid_resolution_;
+        const auto c0 = static_cast<int32_t>(std::floor(fc));
+        const auto r0 = static_cast<int32_t>(std::floor(fr));
+
+        auto fetch = [&](int32_t c, int32_t r) -> double {
+            const uint64_t key =
+                (static_cast<uint64_t>(static_cast<uint32_t>(c)) << 32)
+            |  static_cast<uint64_t>(static_cast<uint32_t>(r));
+            auto it = elevation_grid_.find(key);
+            if (it == elevation_grid_.end())
+            {
+                RCLCPP_DEBUG_THROTTLE(get_logger(), *get_clock(), 5000, 
+                    "Cell (%d, %d) is missing from the terrain grid. Treating as flat (Z=0).", c, r);
+                return 0.0;
+            } 
+            return it->second;
+        };
+
+        const double z00 = fetch(c0,   r0);
+        const double z10 = fetch(c0+1, r0);
+        const double z01 = fetch(c0,   r0+1);
+        const double z11 = fetch(c0+1, r0+1);
+
+        if (std::isnan(z00) || std::isnan(z10) || std::isnan(z01) || std::isnan(z11))
+            return 0.0;  // at least one corner missing — fall back
+
+        const double tx = fc - c0, ty = fr - r0;
+        return (1-tx)*(1-ty)*z00 + tx*(1-ty)*z10
+            + (1-tx)*ty   *z01 + tx*ty   *z11;
+    }
+
+    // =========================================================================
     //  VGICP setup
     // =========================================================================
 
@@ -352,6 +520,11 @@ private:
         auto prior = getPrior(stamp);
         if (!prior) return;
 
+        // The EKF operates in 2D, so its TF prior will have Z ≈ 0. 
+        // We must snap the prior to the terrain mesh before feeding it to ICP.
+        double expected_z = getElevationAt(prior->translation().x(), prior->translation().y());
+        prior->translation().z() = expected_z;
+
         // Ensure VGICP is matching against a dynamic local submap instead of the global map
         updateLocalMap(prior->translation());
 
@@ -365,21 +538,23 @@ private:
         const double fitness   = vgicp_->getFitnessScore();
         const bool   converged = vgicp_->hasConverged();
 
-        if (!converged || fitness > max_fitness_) {
+        if (fitness > max_fitness_) {
             RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
-                "[TRACKING] ICP failed — converged=%s  fitness=%.4f  thresh=%.4f. "
-                "Scan dropped.",
-                converged ? "true" : "false", fitness, max_fitness_);
+                "[TRACKING] fitness=%.4f — FAILED — converged=%s",
+                fitness, converged ? "true" : "false");
             return;
+        } else if (!converged) {
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
+                "[TRACKING] fitness=%.4f — DID NOT CONVERGE", fitness);
+        } else {
+            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+                "[TRACKING] fitness=%.4f", fitness);
         }
-
-        RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
-            "[TRACKING] fitness=%.4f", fitness);
 
         Eigen::Isometry3d result;
         result.matrix() = vgicp_->getFinalTransformation().cast<double>();
         last_good_pose_  = result;   // always keep a fallback prior
-        publishPose(result, stamp, fitness);
+        publishPose(result, this->now(), fitness);
     }
 
     // =========================================================================
@@ -399,8 +574,9 @@ private:
 
             // ── MODE 1: Full pose known ───────────────────────────────────────
             case InitMode::FULL_POSE: {
-                updateLocalMap(Eigen::Vector3d(init_x_, init_y_, 0.0));
-                auto guess = makeXYYaw(init_x_, init_y_, init_yaw_);
+                double z = getElevationAt(init_x_, init_y_);
+                updateLocalMap(Eigen::Vector3d(init_x_, init_y_, z));
+                auto guess = makeXYZYaw(init_x_, init_y_, z, init_yaw_);
                 auto [pose, fitness] = tryAlignAt(guess, vgicp_max_iter_);
 
                 if (fitness > max_fitness_) {
@@ -413,16 +589,17 @@ private:
 
                 RCLCPP_INFO(get_logger(),
                     "[init] FULL_POSE locked in — fitness=%.4f  "
-                    "pos=(%.2f, %.2f)",
+                    "pos=(%.2f, %.2f, %.2f)",
                     fitness,
-                    pose.translation().x(), pose.translation().y());
+                    pose.translation().x(), pose.translation().y(), pose.translation().z());
                 finishInit(pose, stamp, fitness);
                 return;
             }
 
             // ── MODE 2: Position known, heading unknown ───────────────────────
             case InitMode::POSITION_ONLY: {
-                updateLocalMap(Eigen::Vector3d(init_x_, init_y_, 0.0));
+                double z = getElevationAt(init_x_, init_y_);
+                updateLocalMap(Eigen::Vector3d(init_x_, init_y_, z));
                 auto coarse = headingSweep(init_x_, init_y_);
                 if (!coarse) return;  // warning already logged inside sweep
 
@@ -430,9 +607,9 @@ private:
                 auto [refined, fitness] = tryAlignAt(*coarse, vgicp_max_iter_);
                 RCLCPP_INFO(get_logger(),
                     "[init] POSITION_ONLY refined fitness=%.4f  "
-                    "pos=(%.2f, %.2f)  yaw=%.3f rad",
+                    "pos=(%.2f, %.2f, %.2f)  yaw=%.3f rad",
                     fitness,
-                    refined.translation().x(), refined.translation().y(),
+                    refined.translation().x(), refined.translation().y(), refined.translation().z(),
                     std::atan2(refined.rotation()(1, 0), refined.rotation()(0, 0)));
                 finishInit(refined, stamp, fitness);
                 return;
@@ -447,9 +624,9 @@ private:
                 auto [refined, fitness] = tryAlignAt(*coarse, vgicp_max_iter_);
                 RCLCPP_INFO(get_logger(),
                     "[init] GLOBAL refined fitness=%.4f  "
-                    "pos=(%.2f, %.2f)  yaw=%.3f rad",
+                    "pos=(%.2f, %.2f, %.2f)  yaw=%.3f rad",
                     fitness,
-                    refined.translation().x(), refined.translation().y(),
+                    refined.translation().x(), refined.translation().y(), refined.translation().z(),
                     std::atan2(refined.rotation()(1, 0), refined.rotation()(0, 0)));
                 finishInit(refined, stamp, fitness);
                 return;
@@ -465,9 +642,14 @@ private:
     /// Transition to TRACKING and publish the initial pose for the EKF.
     void finishInit(const Eigen::Isometry3d & pose, const rclcpp::Time & stamp, double fitness)
     {
+        (void)stamp;  // scan capture time is stale by ICP/search processing time
+        const rclcpp::Time now = this->now();
+
+        post_init_warmup_ = 5;  // use last_good_pose_ as prior for the first 5 tracking scans
         last_good_pose_ = pose;
         state_           = LocalizerState::TRACKING;
-        publishPose(pose, stamp, fitness);
+
+        publishPose(pose, now, fitness);
         // Also hard-reset the EKF to this pose so it doesn't spend
         // several seconds dragging in from (0, 0).
         // robot_localization treats a message on its set_pose topic as
@@ -476,7 +658,7 @@ private:
             "[init] Resetting EKF to (%.2f, %.2f) via '%s'",
             pose.translation().x(), pose.translation().y(),
             ekf_reset_topic_.c_str());
-        pub_ekf_reset_->publish(buildPoseMsg(pose, stamp, fitness));
+        pub_ekf_reset_->publish(buildPoseMsg(pose, now, fitness));
 
         RCLCPP_INFO(get_logger(),
             "[init] ✓ Initialization complete — now in TRACKING mode.");
@@ -495,12 +677,14 @@ private:
     {
         double best_fitness = std::numeric_limits<double>::max();
         std::optional<Eigen::Isometry3d> best_pose;
+        
+        // Inject dynamic Z here
+        double z = getElevationAt(x, y);
 
         const double step = 2.0 * M_PI / init_heading_candidates_;
         for (int i = 0; i < init_heading_candidates_; ++i) {
             const double yaw = i * step;
-            auto [pose, fitness] = tryAlignAt(makeXYYaw(x, y, yaw),
-                                              init_search_max_iter_);
+            auto [pose, fitness] = tryAlignAt(makeXYZYaw(x, y, z, yaw), init_search_max_iter_);
             RCLCPP_DEBUG(get_logger(),
                 "[init/sweep] yaw=%.2f rad  fitness=%.4f", yaw, fitness);
             if (fitness < best_fitness) {
@@ -510,8 +694,8 @@ private:
         }
 
         RCLCPP_INFO(get_logger(),
-            "[init/sweep] Done at (%.2f, %.2f) — best fitness=%.4f",
-            x, y, best_fitness);
+            "[init/sweep] Done at (%.2f, %.2f, %.2f) — best fitness=%.4f",
+            x, y, z, best_fitness);
 
         if (best_fitness > max_fitness_) {
             RCLCPP_WARN(get_logger(),
@@ -578,9 +762,12 @@ private:
 
         size_t count = 0;
         for (const auto & c : candidates) {
+            // Inject dynamic Z per cell
+            double z = getElevationAt(c.x, c.y);
+            
             for (int h = 0; h < init_heading_candidates_; ++h) {
                 auto [pose, fitness] = tryAlignAt(
-                    makeXYYaw(c.x, c.y, h * yaw_step),
+                    makeXYZYaw(c.x, c.y, z, h * yaw_step),
                     init_search_max_iter_);
 
                 if (fitness < best_fitness) {
@@ -649,20 +836,31 @@ private:
     ///      (it needs our published poses before it can converge and publish TF).
     std::optional<Eigen::Isometry3d> getPrior(const rclcpp::Time & stamp)
     {
+        (void)stamp;  // no longer used for the map→base lookup
+
+        // Post-init warmup: EKF hasn't propagated the reset yet, trust our pose.
+        if (post_init_warmup_ > 0 && last_good_pose_) {
+            --post_init_warmup_;
+            return last_good_pose_;
+        }
+
         try {
+            // TimePointZero = latest available TF (includes all retroactive corrections).
+            // This is the key fix: scan_stamp snapshots are always pre-correction.
             const auto tf = tf_buffer_->lookupTransform(
-                map_frame_, base_frame_, stamp,
+                map_frame_, base_frame_,
+                rclcpp::Time(0),   // time=0 → latest available transform
                 rclcpp::Duration::from_seconds(0.05));
             return tf2::transformToEigen(tf);
+
         } catch (const tf2::TransformException & ex) {
 
             if (init_mode_ == InitMode::TF_PRIOR) {
                 RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10'000,
-                    "[TRACKING] Waiting for EKF map→base_link TF: %s", ex.what());
+                    "[TRACKING] Waiting for EKF TF: %s", ex.what());
                 return std::nullopt;
             }
 
-            // EKF may still be warming up — use our last accepted pose.
             if (last_good_pose_) {
                 RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
                     "[TRACKING] TF unavailable — using last accepted pose as prior.");
@@ -778,10 +976,12 @@ private:
         double cov = 0.01 + (0.1 * fitness);  // increase covariance for worse fits
         msg.pose.covariance[0]  = cov;  // X
         msg.pose.covariance[7]  = cov;  // Y
-        msg.pose.covariance[14] = cov;  // Z
-        msg.pose.covariance[21] = cov;  // Roll
-        msg.pose.covariance[28] = cov;  // Pitch
         msg.pose.covariance[35] = cov;  // Yaw
+
+        // High covariance for these ignored dimensions just in case
+        msg.pose.covariance[14] = 1e9;  // Z
+        msg.pose.covariance[21] = 1e9;  // Roll
+        msg.pose.covariance[28] = 1e9;  // Pitch
 
         return msg;
     }
@@ -807,6 +1007,11 @@ private:
     int         vgicp_resolution_, vgicp_max_iter_;
     double      scan_crop_radius_, submap_radius_, submap_update_dist_;
 
+    // ── Terrain config ───────────────────────────────────────────────────────
+    std::string terrain_ply_path_;
+    double      terrain_grid_resolution_ = 0.5;
+    std::unordered_map<uint64_t, double> elevation_grid_;
+
     // ── Init config ──────────────────────────────────────────────────────────
     InitMode init_mode_               = InitMode::TF_PRIOR;
     double   init_x_                  = 0.0;
@@ -819,8 +1024,9 @@ private:
     std::string ekf_reset_topic_;
 
     // ── Runtime state ─────────────────────────────────────────────────────────
-    LocalizerState                   state_          = LocalizerState::NEEDS_INIT;
+    LocalizerState                   state_            = LocalizerState::NEEDS_INIT;
     std::optional<Eigen::Isometry3d> last_good_pose_;
+    int                              post_init_warmup_ = 0;  // number of initial tracking scans to trust last_good_pose_ over TF
 
     // ── Map & matcher ─────────────────────────────────────────────────────────
     std::shared_ptr<VGICPVariant>        vgicp_;
