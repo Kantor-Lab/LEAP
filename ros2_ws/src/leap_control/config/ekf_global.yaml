@@ -10,6 +10,12 @@ ekf_global_filter_node:
     publish_tf: true
     reset_on_time_jump: true
 
+    # ============================================
+    # Lagged Data Configuration
+    # ============================================
+    smooth_lagged_data: true
+    history_length: 15.0          # Buffer size to rewind past the ~0.3s max LiDAR delay
+
     # Coordinate Frames
     map_frame: map              # Defaults to "map" if unspecified
     odom_frame: odom            # Defaults to "odom" if unspecified
@@ -64,7 +70,7 @@ ekf_global_filter_node:
     # # odom0_differential: false
 
     # ============================================
-    # VGICP Configuration (/cmd_vel)
+    # VGICP Configuration (/localizer/pose)
     # ============================================
     pose0: /localizer/pose
     pose0_config: [true,  true, false,  # VGICP gives absolute X, Y, Z
@@ -73,4 +79,5 @@ ekf_global_filter_node:
                   false, false, false,
                   false, false, false]
     pose0_differential: false
-    pose0_rejection_threshold: 2.0  # Ignore VGICP jumps if they heavily disagree with the state?
+    pose0_queue_size: 10            # Added: Ensures delayed poses aren't dropped waiting to be processed
+    pose0_rejection_threshold: 2.0  # Ignore VGICP jumps if they heavily disagree with the state

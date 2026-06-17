@@ -486,7 +486,7 @@ private:
 #ifndef USE_CUDA_VGICP
         vgicp_->setNumThreads(0);
         RCLCPP_INFO(get_logger(), "Matcher: FastVGICP (CPU, all threads)");
-#else
+#else                           
         RCLCPP_INFO(get_logger(), "Matcher: cuVGICP (CUDA GPU)");
 #endif
         // Set the global map by default (needed immediately if GLOBAL init mode is used)
@@ -554,7 +554,7 @@ private:
         Eigen::Isometry3d result;
         result.matrix() = vgicp_->getFinalTransformation().cast<double>();
         last_good_pose_  = result;   // always keep a fallback prior
-        publishPose(result, this->now(), fitness);
+        publishPose(result, stamp, fitness);
     }
 
     // =========================================================================
@@ -642,14 +642,11 @@ private:
     /// Transition to TRACKING and publish the initial pose for the EKF.
     void finishInit(const Eigen::Isometry3d & pose, const rclcpp::Time & stamp, double fitness)
     {
-        (void)stamp;  // scan capture time is stale by ICP/search processing time
-        const rclcpp::Time now = this->now();
-
         post_init_warmup_ = 5;  // use last_good_pose_ as prior for the first 5 tracking scans
         last_good_pose_ = pose;
         state_           = LocalizerState::TRACKING;
 
-        publishPose(pose, now, fitness);
+        publishPose(pose, stamp, fitness);
         // Also hard-reset the EKF to this pose so it doesn't spend
         // several seconds dragging in from (0, 0).
         // robot_localization treats a message on its set_pose topic as
@@ -658,7 +655,7 @@ private:
             "[init] Resetting EKF to (%.2f, %.2f) via '%s'",
             pose.translation().x(), pose.translation().y(),
             ekf_reset_topic_.c_str());
-        pub_ekf_reset_->publish(buildPoseMsg(pose, now, fitness));
+        pub_ekf_reset_->publish(buildPoseMsg(pose, stamp, fitness));
 
         RCLCPP_INFO(get_logger(),
             "[init] ✓ Initialization complete — now in TRACKING mode.");
@@ -836,8 +833,6 @@ private:
     ///      (it needs our published poses before it can converge and publish TF).
     std::optional<Eigen::Isometry3d> getPrior(const rclcpp::Time & stamp)
     {
-        (void)stamp;  // no longer used for the map→base lookup
-
         // Post-init warmup: EKF hasn't propagated the reset yet, trust our pose.
         if (post_init_warmup_ > 0 && last_good_pose_) {
             --post_init_warmup_;
@@ -848,8 +843,7 @@ private:
             // TimePointZero = latest available TF (includes all retroactive corrections).
             // This is the key fix: scan_stamp snapshots are always pre-correction.
             const auto tf = tf_buffer_->lookupTransform(
-                map_frame_, base_frame_,
-                rclcpp::Time(0),   // time=0 → latest available transform
+                map_frame_, base_frame_, stamp,
                 rclcpp::Duration::from_seconds(0.05));
             return tf2::transformToEigen(tf);
 
