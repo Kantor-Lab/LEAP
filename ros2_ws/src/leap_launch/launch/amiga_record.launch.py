@@ -69,7 +69,7 @@ def generate_launch_description():
         '/cmd_vel',
         '/cmd_vel_joy',
         '/cmd_vel_key',
-        '/cmd_vel_nav2',
+        '/cmd_vel_nav2_raw',
         '/cmd_vel_raw',
         '/gps/filtered',
         '/gps/fix',

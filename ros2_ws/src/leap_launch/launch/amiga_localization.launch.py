@@ -123,7 +123,6 @@ def generate_launch_description():
         package='tf2_ros',
         executable='static_transform_publisher',
         name='static_tf_map_odom',
-        # Arguments are: x, y, z, roll, pitch, yaw, frame_id, child_frame_id
         arguments=['0', '0', '0', '0', '0', '0', 'map', 'odom'],
         condition=UnlessCondition(LaunchConfiguration('use_map'))
     )

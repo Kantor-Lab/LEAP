@@ -138,7 +138,7 @@ def generate_launch_description():
     ld.add_action(rsp_launch)
     ld.add_action(cal_cam_tf)
     ld.add_action(rviz_node)
-    ld.add_action(start_blackfly_cmd)
+    # ld.add_action(start_blackfly_cmd)
     ld.add_action(start_ouster_cmd)
     ld.add_action(reach_m2_node)
     ld.add_action(start_yolo_ros_cmd)
