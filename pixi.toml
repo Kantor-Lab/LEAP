@@ -10,6 +10,7 @@ platforms = [
 version = "0.1.0"
 
 [tasks]
+build = {cmd = "colcon build --symlink-install", inputs = ["ros2_ws/src"], cwd = "ros2_ws"}
 
 [dependencies]
 python = ">=3.11.15,<3.12"
