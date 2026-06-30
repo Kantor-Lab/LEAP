@@ -1,0 +1,14 @@
+[workspace]
+authors = ["Atharv Goel <atharvgo@andrew.cmu.edu>", "Evan Foster <evanfost@andrew.cmu.edu>"]
+channels = ["robostack-humble", "conda-forge"]
+name = "LEAP"
+platforms = [
+    { name = "jetson-orin-nano", platform = "linux-aarch64", cuda = "12.6" },
+    "linux-64",
+    "osx-arm64"
+]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]

@@ -10,3 +10,7 @@ ros2_ws/log/
 ros2_ws/src/leap_control/leap_control/__pycache__/
 
 ros2_ws/output.txt
+
+# pixi environments
+.pixi/*
+!.pixi/config.toml
