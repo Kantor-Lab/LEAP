@@ -32,7 +32,8 @@ class TwistToTwist(Node):
         # --- Watchdog Timer Setup ---
         self.triggered = False
         self.last_msg_time = self.get_clock().now()
-        self.timeout_duration = 0.25  # seconds before assuming we are stopped
+        # self.timeout_duration = 0.25  # seconds before assuming we are stopped
+        self.timeout_duration = 10000000000
         
         # Check for timeouts at 10Hz
         self.timer = self.create_timer(0.1, self.watchdog_callback)

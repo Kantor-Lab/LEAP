@@ -22,19 +22,19 @@ class ImuRelay(Node):
         )
         
         # --- Calibration Constants from Logs ---
-        self.linear_accel_bias = [-0.144932, 0.112021, 0.198726]
-        self.angular_vel_bias = [-0.004937, 0.000345, -0.013345]
+        self.linear_accel_bias = [-0.428545, 0.098971, 0.193610]
+        self.angular_vel_bias = [-0.002787, 0.001280, -0.013187]
         
         self.linear_accel_cov = [
-            0.00135564, 0.0, 0.0, 
-            0.0, 0.00146361, 0.0, 
-            0.0, 0.0, 0.00039451
-        ]
+            0.00039005, 0.0, 0.0, 
+            0.0, 0.00033120, 0.0, 
+            0.0, 0.0, 0.00031799
+            ]
         
         self.angular_vel_cov = [
-            0.00000078, 0.0, 0.0, 
-            0.0, 0.00000063, 0.0, 
-            0.0, 0.0, 0.00000195
+            0.00000042, 0.0, 0.0, 
+            0.0, 0.00000034, 0.0, 
+            0.0, 0.0, 0.00000032
         ]
 
         self.get_logger().info("IMU Relay started. Publishing clean data to /imu.")

@@ -61,13 +61,14 @@ ekf_global_filter_node:
     # ============================================
     # GPS Configuration (/odometry/gps, post navsat_transform_node)
     # ============================================
-    # odom0: /odometry/gps
-    # odom0_config: [true,  true, false,   # GPS gives absolute X, Y
-    #               false, false, false,
-    #               false, false, false,
-    #               false, false, false,
-    #               false, false, false]
-    # odom0_differential: false
+    odom0: /odometry/gps
+    odom0_config: [true,  true, false,   # GPS gives absolute X, Y
+                  false, false, false,
+                  false, false, false,
+                  false, false, false,
+                  false, false, false]
+    odom0_differential: false
+    odom0_rejection_threshold: 4.5
 
     # ============================================
     # VGICP Configuration (/localizer/pose)

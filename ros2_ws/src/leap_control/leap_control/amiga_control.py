@@ -229,7 +229,7 @@ class AmigaControl(Node):
         cmd_vel_msg = msg
         self.amiga_cmd_state_.state_req = AmigaControlState.STATE_AUTO_ACTIVE
         self.amiga_cmd_state_.cmd_speed = cmd_vel_msg.linear.x
-        self.amiga_cmd_state_.cmd_ang_rate = cmd_vel_msg.angular.z
+        self.amiga_cmd_state_.cmd_ang_rate = cmd_vel_msg.angular.z / 1.2  # TODO: Temporary magic number to fix everything
 
         cmd_msg = can.Message(
             arbitration_id=0x20E,

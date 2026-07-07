@@ -51,6 +51,20 @@ SUBSYSTEMS = [
         "toggles": [],
     },
     {
+        "id": "control",
+        "label": "CONTROL",
+        "description": "Amiga control stack",
+        "cmd": "ros2 launch leap_launch amiga_control.launch.py",
+        "toggles": [],
+    },
+    {
+        "id": "record",
+        "label": "RECORD",
+        "description": "Amiga rosbag recording stack",
+        "cmd": "ros2 launch leap_launch amiga_record.launch.py",
+        "toggles": [],
+    },
+    {
         "id": "sensors",
         "label": "SENSORS",
         "description": "Amiga sensor stack",
@@ -81,13 +95,6 @@ SUBSYSTEMS = [
         "label": "NAVIGATION",
         "description": "Amiga navigation stack",
         "cmd": "ros2 launch leap_launch amiga_navigation.launch.py",
-        "toggles": [],
-    },
-    {
-        "id": "record",
-        "label": "RECORD",
-        "description": "Amiga rosbag recording stack",
-        "cmd": "ros2 launch leap_launch amiga_record.launch.py",
         "toggles": [],
     },
 ]

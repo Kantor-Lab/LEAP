@@ -31,17 +31,9 @@ def generate_launch_description():
         output='screen'
     )
 
-    imu_relay_node = Node(
-        package='leap_control',
-        executable='imu_relay',
-        name='imu_relay',
-        output='screen'
-    )
-
     ld = LaunchDescription()
     ld.add_action(teleop_included_launch)     
     ld.add_action(control_node)
     ld.add_action(cmdvel_relay_node)
-    ld.add_action(imu_relay_node)
 
     return ld

@@ -547,7 +547,7 @@ private:
             RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
                 "[TRACKING] fitness=%.4f — DID NOT CONVERGE", fitness);
         } else {
-            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 5000,
                 "[TRACKING] fitness=%.4f", fitness);
         }
 

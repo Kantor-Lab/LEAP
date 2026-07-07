@@ -88,11 +88,24 @@ def generate_launch_description():
         )
     )
 
+    dbg_image_republish_node = Node(
+        package='image_transport',
+        executable='republish',
+        name='yolo_dbg_image_republish',
+        arguments=['raw', 'compressed'],
+        remappings=[
+            ('in', '/yolo/dbg_image'),
+            ('out/compressed', '/yolo/dbg_image/compressed'),
+        ],
+        output='screen',
+    )
+
     # --- Assemble Launch Description ---
     ld = LaunchDescription()
     
     ld.add_action(yolo_node_cmd)
     ld.add_action(debug_node_cmd)
     ld.add_action(on_active)
+    ld.add_action(dbg_image_republish_node)
 
     return ld

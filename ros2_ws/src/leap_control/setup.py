@@ -16,12 +16,8 @@ setup(
         # Install package.xml
         ('share/' + package_name, ['package.xml']),
         
-        # # Install launch files
         (os.path.join('share', package_name, 'launch'), glob(os.path.join('launch', '*.py'))),
-
         (os.path.join('share', package_name, 'config'), glob(os.path.join('config', '*'))),
-        # ('share/' + package_name + '/launch', launch_files),
-
         (os.path.join('share', package_name, 'maps'), glob(os.path.join('maps', '*'))),
     ],
     install_requires=['setuptools'],
@@ -35,8 +31,7 @@ setup(
         'console_scripts': [
             'amiga_control = leap_control.amiga_control:main',
             'cmdvel_relay = leap_control.cmdvel_relay:main',
-            'imu_calibration = leap_control.imu_calibration:main',
-            'imu_relay = leap_control.imu_relay:main',
+            'gps_odom_node = leap_control.gps_odom_node:main'
         ],
     },
 )
