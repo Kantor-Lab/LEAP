@@ -1,7 +1,7 @@
 from launch import LaunchDescription
 from launch.actions import ExecuteProcess, RegisterEventHandler
 from launch.conditions import IfCondition
-from launch_ros.actions import LifecycleNode
+from launch_ros.actions import LifecycleNode, Node
 from launch_ros.event_handlers import OnStateTransition
 
 
@@ -88,15 +88,29 @@ def generate_launch_description():
         )
     )
 
+    dbg_image_resize_node = Node(
+        package='image_proc',
+        executable='resize_node',
+        name='dbg_image_resize',
+        remappings=[
+            ('image/image_raw', '/yolo/dbg_image'),
+            ('image/camera_info', '/flir_camera/camera_info'),
+            ('resize/image_raw', '/yolo/dbg_image_resized'),
+        ],
+        parameters=[{'scale_height': 0.5, 'scale_width': 0.5}],
+        output='screen',
+    )
+
     dbg_image_republish_node = Node(
         package='image_transport',
         executable='republish',
         name='yolo_dbg_image_republish',
         arguments=['raw', 'compressed'],
         remappings=[
-            ('in', '/yolo/dbg_image'),
+            ('in', '/yolo/dbg_image_resized'),
             ('out/compressed', '/yolo/dbg_image/compressed'),
         ],
+        parameters=[{'compressed.jpeg_quality': 75}],
         output='screen',
     )
 
@@ -106,6 +120,7 @@ def generate_launch_description():
     ld.add_action(yolo_node_cmd)
     ld.add_action(debug_node_cmd)
     ld.add_action(on_active)
+    ld.add_action(dbg_image_resize_node)
     ld.add_action(dbg_image_republish_node)
 
     return ld

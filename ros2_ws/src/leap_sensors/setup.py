@@ -29,8 +29,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'imu_calibration = leap_control.imu_calibration:main',
-            'imu_relay = leap_control.imu_relay:main',
+            'imu_calibration = leap_sensors.imu_calibration:main',
+            'imu_relay = leap_sensors.imu_relay:main',
         ],
     },
 )
