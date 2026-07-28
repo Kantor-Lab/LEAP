@@ -107,20 +107,16 @@ def generate_launch_description():
     )
 
     imu_relay_node = Node(
-        package='leap_control',
+        package='leap_sensors',
         executable='imu_relay',
         name='imu_relay',
         output='screen'
     )
 
     reach_m2_node = Node(
-        package='nmea_navsat_driver',
-        executable='nmea_serial_driver',
+        package='leap_navsat',
+        executable='leap_navsat_driver',
         parameters=[{
-            'port': '/dev/ttyACM0',
-            'baud': 38400,
-            'frame_id': 'reach',
-            'use_GNSS_time': False, 
             'time_ref_source': "gps", 
             'useRMC': False
         }], 

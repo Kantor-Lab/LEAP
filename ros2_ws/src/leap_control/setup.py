@@ -31,7 +31,8 @@ setup(
         'console_scripts': [
             'amiga_control = leap_control.amiga_control:main',
             'cmdvel_relay = leap_control.cmdvel_relay:main',
-            'gps_odom_node = leap_control.gps_odom_node:main'
+            'gps_transform = leap_control.gps_transform:main',
+            'gps_filter = leap_control.gps_filter:main',
         ],
     },
 )

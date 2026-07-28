@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-gps_odom_node.py
+gps_transform.py
 
 Converts RTK NavSatFix messages (e.g. from nmea_navsat_driver on a Reach M2)
 into nav_msgs/Odometry in the robot's local/map frame, using a precomputed
@@ -18,6 +18,14 @@ This node does NOT use navsat_transform_node's auto-datum estimation.
 It assumes the local frame this transform targets IS the robot's live
 map/world origin (per LEAP convention) -- if that ever changes, this
 transform must be regenerated.
+
+This node performs the coordinate transform ONLY. It does no quality
+filtering of its own: no NavSatStatus check, no DOP check, no sanity
+check on the incoming lat/lon. It trusts that the upstream driver
+(driver.py) has already gated out bad epochs -- via fix status, DOP,
+and GST-based position-error thresholds -- before publishing to /fix.
+If bad data is reaching this node, fix the gate in driver.py rather
+than adding filtering here.
 """
 
 import re
@@ -26,7 +34,7 @@ import numpy as np
 import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile, QoSReliabilityPolicy, QoSHistoryPolicy
-from sensor_msgs.msg import NavSatFix, NavSatStatus
+from sensor_msgs.msg import NavSatFix
 from nav_msgs.msg import Odometry
 
 try:
@@ -75,23 +83,21 @@ class GpsOdomNode(Node):
 
         # --- Parameters ---
         self.declare_parameter('transform_file', '')
-        self.declare_parameter('gps_topic', '/fix')
-        self.declare_parameter('odom_topic', '/odometry/gps')
-        self.declare_parameter('child_frame_id', 'base_footprint')
-        self.declare_parameter('geoid_offset', 0.0)  # meters, see note below
-        self.declare_parameter('min_publish_status', NavSatStatus.STATUS_FIX)
-        self.declare_parameter('default_position_stddev', 0.02)  # meters, fallback only
+        # Fallback stddev (meters) used ONLY if a fix somehow arrives with
+        # unknown/zero covariance -- this should not happen if driver.py's
+        # quality gate is working, so it's set deliberately large ("don't
+        # trust this") rather than a realistic RTK accuracy figure.
+        self.declare_parameter('default_position_stddev', 1000.0)
 
         transform_file = self.get_parameter('transform_file').get_parameter_value().string_value
         if not transform_file:
             raise RuntimeError('Parameter "transform_file" must be set to the path of T_world_utm.txt')
 
-        self.gps_topic = self.get_parameter('gps_topic').get_parameter_value().string_value
-        self.odom_topic = self.get_parameter('odom_topic').get_parameter_value().string_value
-        self.map_frame_id = "map"
-        self.child_frame_id = self.get_parameter('child_frame_id').get_parameter_value().string_value
-        self.geoid_offset = self.get_parameter('geoid_offset').get_parameter_value().double_value
-        self.min_publish_status = self.get_parameter('min_publish_status').get_parameter_value().integer_value
+        self.gps_topic = '/fix'
+        self.odom_topic = '/fix/transformed'
+        self.map_frame_id = 'map'
+        self.child_frame_id = 'reach'
+        self.geoid_offset = 0.0  # meters, to reconcile ellipsoidal vs orthometric height conventions
         self.default_position_stddev = self.get_parameter('default_position_stddev').get_parameter_value().double_value
 
         # --- Load transform ---
@@ -115,23 +121,8 @@ class GpsOdomNode(Node):
         self.sub = self.create_subscription(NavSatFix, self.gps_topic, self.gps_callback, qos)
         self.pub = self.create_publisher(Odometry, self.odom_topic, 10)
 
-        self._warned_no_fix = False
-
     def gps_callback(self, msg: NavSatFix):
-        if msg.status.status < self.min_publish_status:
-            if not self._warned_no_fix:
-                self.get_logger().warn(
-                    f'GPS status {msg.status.status} below min_publish_status '
-                    f'{self.min_publish_status}; suppressing further warnings until fix recovers.'
-                )
-                self._warned_no_fix = True
-            return
-        self._warned_no_fix = False
-
-        if msg.latitude == 0.0 and msg.longitude == 0.0:
-            self.get_logger().warn('Received (0,0) lat/lon, skipping.')
-            return
-
+        # No status/DOP/sanity check here by design -- see module docstring.
         easting, northing = self.to_utm.transform(msg.longitude, msg.latitude)
         altitude = msg.altitude + self.geoid_offset
 
@@ -158,12 +149,18 @@ class GpsOdomNode(Node):
         """Rotate NavSatFix's ENU position covariance into the local frame."""
         cov = np.array(msg.position_covariance, dtype=np.float64).reshape(3, 3)
 
-        # Detect placeholder/zero covariance some drivers publish and fall back
-        # to a conservative fixed estimate rather than telling the EKF GPS is
-        # perfect (all-zero covariance) or garbage (COVARIANCE_TYPE_UNKNOWN).
+        # This should never happen if driver.py's quality gate is working --
+        # it only publishes fixes it already trusts, with known covariance.
+        # If it does happen, don't silently treat it as low-noise; fall back
+        # to a large, clearly-not-trusted variance instead.
         if msg.position_covariance_type == NavSatFix.COVARIANCE_TYPE_UNKNOWN or np.allclose(cov, 0.0):
+            self.get_logger().error(
+                'NavSatFix has unknown or zero covariance despite coming from the '
+                f'gated /fix topic; using fallback stddev of {self.default_position_stddev} m '
+                'for all axes (don\'t trust this fix). Check driver.py\'s quality gate.'
+            )
             var = self.default_position_stddev ** 2
-            cov = np.diag([var, var, var * 4.0])  # vertical usually worse than horizontal
+            cov = np.diag([var, var, var])
 
         # position_covariance is in ENU (east, north, up) local tangent order,
         # matching x=easting, y=northing before rotation. Rotate the xy block

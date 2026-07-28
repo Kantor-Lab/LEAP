@@ -46,35 +46,6 @@ def generate_launch_description():
         default_value=transform_path,
         description='Path to the T_world_utm.txt rigid transform file',
     )
- 
-    gps_topic_arg = DeclareLaunchArgument(
-        'gps_topic',
-        default_value='/fix',
-        description='NavSatFix topic published by nmea_navsat_driver',
-    )
- 
-    odom_topic_arg = DeclareLaunchArgument(
-        'odom_topic',
-        default_value='/odometry/gps',
-        description='Output Odometry topic to feed into the global EKF odom0',
-    )
- 
-    child_frame_arg = DeclareLaunchArgument(
-        'child_frame_id',
-        default_value='base_footprint',
-        description='Child frame id for the published Odometry message',
-    )
- 
-    geoid_offset_arg = DeclareLaunchArgument(
-        'geoid_offset',
-        default_value='0.0',
-        description=(
-            'Correction (meters) added to NavSatFix altitude before UTM-frame '
-            'conversion, to reconcile ellipsoidal vs orthometric height '
-            'conventions between the Reach M2 output and T_world_utm. '
-            'Leave at 0.0 until verified.'
-        ),
-    )
 
     ekf_local_node = Node(
         package='robot_localization',
@@ -96,18 +67,21 @@ def generate_launch_description():
         condition=IfCondition(LaunchConfiguration('use_map'))
     )
 
-    gps_odom_node = Node(
+    gps_transform_node = Node(
         package='leap_control',
-        executable='gps_odom_node',
-        name='gps_odom_node',
+        executable='gps_transform',
+        name='gps_transform',
         output='screen',
         parameters=[{
-            'transform_file': LaunchConfiguration('transform_file'),
-            'gps_topic': LaunchConfiguration('gps_topic'),
-            'odom_topic': LaunchConfiguration('odom_topic'),
-            'child_frame_id': LaunchConfiguration('child_frame_id'),
-            'geoid_offset': LaunchConfiguration('geoid_offset'),
+            'transform_file': LaunchConfiguration('transform_file')
         }],
+    )
+
+    gps_filter_node = Node(
+        package='leap_control',
+        executable='gps_filter',
+        name='gps_filter',
+        output='screen',
     )
 
     icp_node = Node(
@@ -152,13 +126,10 @@ def generate_launch_description():
     ld.add_action(terrain_ply_arg)
     ld.add_action(initial_yaw_deg_arg)
     ld.add_action(transform_file_arg)
-    ld.add_action(gps_topic_arg)
-    ld.add_action(odom_topic_arg)
-    ld.add_action(child_frame_arg)
-    ld.add_action(geoid_offset_arg)
     ld.add_action(ekf_local_node)
     ld.add_action(ekf_global_node)
-    ld.add_action(gps_odom_node)
+    ld.add_action(gps_transform_node)
+    ld.add_action(gps_filter_node)
     ld.add_action(icp_node)
     ld.add_action(static_tf_map_odom_node)
     return ld
