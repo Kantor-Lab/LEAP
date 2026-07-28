@@ -1,7 +1,7 @@
 <root main_tree_to_execute="MainTree">
   <BehaviorTree ID="MainTree">
     
-    <RecoveryNode number_of_retries="3" name="NavigateRecovery">
+    <RecoveryNode number_of_retries="10" name="NavigateRecovery">
       
       <PipelineSequence name="NavigateWithReplanning">
         
