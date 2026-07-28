@@ -20,17 +20,20 @@ find_package(pcl_conversions REQUIRED)
 find_package(fast_gicp REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(PCL REQUIRED)
+find_package(CUDAToolkit REQUIRED)
 
 add_executable(map_odom_localizer src/map_odom_localizer.cpp)
 
 target_include_directories(map_odom_localizer PUBLIC
   ${PCL_INCLUDE_DIRS}
   ${EIGEN3_INCLUDE_DIRS}
+  ${CUDAToolkit_INCLUDE_DIRS}
 )
 
 target_compile_definitions(map_odom_localizer PRIVATE
     THRUST_IGNORE_CUB_VERSION_CHECK
     EIGEN_NO_CUDA
+    USE_CUDA_VGICP
 )
 
 ament_target_dependencies(map_odom_localizer
@@ -42,6 +45,10 @@ ament_target_dependencies(map_odom_localizer
   geometry_msgs
   pcl_conversions
   fast_gicp
+)
+
+target_link_libraries(map_odom_localizer 
+    CUDA::cudart
 )
 
 # Install rules

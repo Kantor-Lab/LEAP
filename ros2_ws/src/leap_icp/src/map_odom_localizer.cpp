@@ -49,7 +49,7 @@
 #include <pcl/conversions.h>
 
 #ifdef USE_CUDA_VGICP
-  #include <fast_vgicp/cuda/fast_vgicp_cuda.cuh>
+  #include <fast_gicp/gicp/fast_vgicp_cuda.hpp>
   using VGICPVariant = fast_gicp::FastVGICPCuda<pcl::PointXYZI, pcl::PointXYZI>;
 #else
   #include <fast_gicp/gicp/fast_vgicp.hpp>
@@ -60,6 +60,7 @@
 #include <Eigen/Geometry>
 
 #include <cmath>
+#include <chrono>
 #include <cstdint>
 #include <limits>
 #include <memory>
@@ -146,7 +147,7 @@ private:
     {
         // ── Core ───────────────────────────────────
         declare_parameter("map_frame",              "map");
-        declare_parameter("base_frame",             "base_link");
+        declare_parameter("base_frame",             "base_footprint");
         declare_parameter("lidar_topic",            "/ouster/points");
         declare_parameter("map_ply_path",           "");
         declare_parameter("voxel_leaf_map",         0.3);
@@ -189,6 +190,11 @@ private:
         // Override the default EKF starting pose
         declare_parameter("ekf_reset_topic", "/set_pose");
 
+        // CUDA-only: which NN search backend FastVGICPCuda should use.
+        // "cpu_kdtree" | "gpu_bruteforce" | "gpu_rbf_kernel"
+        // ONLY cpu_kdtree works! gpu_bruteforce is really slow and gpu_rbf_kernel needs too much memory!
+        declare_parameter("cuda_nn_method", "cpu_kdtree");
+
         // ── Read values ──────────────────────────────────────────────────────
         map_frame_    = get_parameter("map_frame").as_string();
         base_frame_   = get_parameter("base_frame").as_string();
@@ -219,6 +225,7 @@ private:
         init_search_max_iter_    = get_parameter("init_search_max_iter").as_int();
 
         ekf_reset_topic_ = get_parameter("ekf_reset_topic").as_string();
+        cuda_nn_method_  = get_parameter("cuda_nn_method").as_string();
 
         const std::string mode_str = get_parameter("init_mode").as_string();
         if      (mode_str == "full_pose")     init_mode_ = InitMode::FULL_POSE;
@@ -486,8 +493,24 @@ private:
 #ifndef USE_CUDA_VGICP
         vgicp_->setNumThreads(0);
         RCLCPP_INFO(get_logger(), "Matcher: FastVGICP (CPU, all threads)");
-#else                           
-        RCLCPP_INFO(get_logger(), "Matcher: cuVGICP (CUDA GPU)");
+#else
+        // FastVGICPCuda defaults to CPU_PARALLEL_KDTREE for correspondence
+        // search if not set explicitly — meaning NN search would silently
+        // stay CPU-bound even in the "CUDA" build. Set it explicitly.
+        if (cuda_nn_method_ == "gpu_bruteforce") {
+            vgicp_->setNearestNeighborSearchMethod(fast_gicp::NearestNeighborMethod::GPU_BRUTEFORCE);
+            RCLCPP_INFO(get_logger(), "Matcher: cuVGICP (CUDA GPU, NN=GPU_BRUTEFORCE)");
+        } else if (cuda_nn_method_ == "gpu_rbf_kernel") {
+            vgicp_->setNearestNeighborSearchMethod(fast_gicp::NearestNeighborMethod::GPU_RBF_KERNEL);
+            RCLCPP_INFO(get_logger(), "Matcher: cuVGICP (CUDA GPU, NN=GPU_RBF_KERNEL)");
+        } else {
+            if (cuda_nn_method_ != "cpu_kdtree")
+                RCLCPP_WARN(get_logger(),
+                    "Unknown cuda_nn_method '%s' — defaulting to 'cpu_kdtree'.",
+                    cuda_nn_method_.c_str());
+            vgicp_->setNearestNeighborSearchMethod(fast_gicp::NearestNeighborMethod::CPU_PARALLEL_KDTREE);
+            RCLCPP_INFO(get_logger(), "Matcher: cuVGICP (CUDA GPU, NN=CPU_PARALLEL_KDTREE)");
+        }
 #endif
         // Set the global map by default (needed immediately if GLOBAL init mode is used)
         vgicp_->setInputTarget(global_map_);
@@ -502,13 +525,21 @@ private:
 
     void cloudCallback(const sensor_msgs::msg::PointCloud2::SharedPtr msg)
     {
+        using clock = std::chrono::steady_clock;
+        const auto t_start = clock::now();
+
         const rclcpp::Time stamp = msg->header.stamp;
 
         // Transform scan into base_link frame, crop, and downsample.
         auto scan_base = toBaseFrame(msg, stamp);
         if (!scan_base) return;
+        const auto t_tobase = clock::now();
+
         auto scan_cropped = cropCloud(scan_base.value(), scan_crop_radius_);
+        const auto t_crop = clock::now();
+
         const auto scan_ds = downsample(scan_cropped, voxel_leaf_scan_);
+        const auto t_downsample = clock::now();
 
         // ── First-scan bootstrap ─────────────────────────────────────────────
         if (state_ == LocalizerState::NEEDS_INIT) {
@@ -519,6 +550,7 @@ private:
         // ── Normal tracking ──────────────────────────────────────────────────
         auto prior = getPrior(stamp);
         if (!prior) return;
+        const auto t_prior = clock::now();
 
         // The EKF operates in 2D, so its TF prior will have Z ≈ 0. 
         // We must snap the prior to the terrain mesh before feeding it to ICP.
@@ -527,6 +559,7 @@ private:
 
         // Ensure VGICP is matching against a dynamic local submap instead of the global map
         updateLocalMap(prior->translation());
+        const auto t_submap = clock::now();
 
         // fast_gicp caches source covariances after the first setInputSource call,
         // so re-setting with the same cloud on every tick is fine (no-op if the
@@ -534,9 +567,22 @@ private:
         vgicp_->setInputSource(scan_ds);
         pcl::PointCloud<pcl::PointXYZI> aligned;
         vgicp_->align(aligned, prior->matrix().cast<float>());
+        const auto t_align = clock::now();
 
         const double fitness   = vgicp_->getFitnessScore();
         const bool   converged = vgicp_->hasConverged();
+
+        // {
+        //     auto ms = [](clock::time_point a, clock::time_point b) {
+        //         return std::chrono::duration<double, std::milli>(b - a).count();
+        //     };
+        //     RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 1000,
+        //         "[timing] toBase=%.1f crop=%.1f downsample=%.1f prior=%.1f "
+        //         "submap=%.1f align=%.1f total=%.1f ms",
+        //         ms(t_start, t_tobase), ms(t_tobase, t_crop), ms(t_crop, t_downsample),
+        //         ms(t_downsample, t_prior), ms(t_prior, t_submap), ms(t_submap, t_align),
+        //         ms(t_start, t_align));
+        // }
 
         if (fitness > max_fitness_) {
             RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 1000,
@@ -1016,6 +1062,7 @@ private:
     int      init_search_max_iter_    = 20;
 
     std::string ekf_reset_topic_;
+    std::string cuda_nn_method_ = "gpu_rbf_kernel";  ///< CUDA-only: NN search backend
 
     // ── Runtime state ─────────────────────────────────────────────────────────
     LocalizerState                   state_            = LocalizerState::NEEDS_INIT;
