@@ -7,6 +7,5 @@ ros2_ws/build/
 ros2_ws/install/
 ros2_ws/log/
 
-ros2_ws/src/leap_control/leap_control/__pycache__/
-
-ros2_ws/output.txt
+mobileclip2_b.ts
+yoloe-26n-seg.pt
