@@ -36,8 +36,16 @@ def generate_launch_description():
         output='screen'
     )
 
+    row_mission_node = Node(
+        package='leap_nav',
+        executable='row_mission_node',
+        name='row_mission_node',
+        output='screen'
+    )
+
     ld = LaunchDescription()
     ld.add_action(nav2_navigation_group)
     ld.add_action(cmdvelnav2_relay_node)
+    ld.add_action(row_mission_node)
 
     return ld

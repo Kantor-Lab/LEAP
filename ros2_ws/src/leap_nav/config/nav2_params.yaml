@@ -111,7 +111,7 @@ local_costmap:
           expected_update_rate: 0.0
           observation_persistence: 0.0
           filter: "voxel"
-          voxel_min_points: 3
+          voxel_min_points: 300
           inf_is_valid: false
           clear_after_reading: true
       inflation_layer:
