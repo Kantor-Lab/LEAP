@@ -71,9 +71,9 @@ ekf_global_filter_node:
     odom0_rejection_threshold: 4.5
 
     # ============================================
-    # VGICP Configuration (/localizer/pose)
+    # VGICP Configuration (/icp/pose)
     # ============================================
-    pose0: /localizer/pose
+    pose0: /icp/pose
     pose0_config: [true,  true, false,  # VGICP gives absolute X, Y, Z
                   false, false,  true,  # VGICP gives absolute Roll, Pitch, Yaw
                   false, false, false,

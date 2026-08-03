@@ -27,7 +27,7 @@ def generate_launch_description():
     topics_to_record = [
         '/clicked_point',
         '/diagnostics',
-        '/fix',
+        # '/fix',
         '/flir_camera/camera_info',
         '/flir_camera/image_raw',
         # '/flir_camera/image_raw/compressed',
@@ -71,10 +71,13 @@ def generate_launch_description():
         '/cmd_vel_key',
         '/cmd_vel_nav2_raw',
         '/cmd_vel_raw',
+        '/fix',
+        '/fix/transformed',
         '/imu',
         '/joy',
         '/joy/set_feedback',
-        '/localizer/pose',
+        '/icp/pose',
+        '/icp/fitness'
         '/map',
         '/map_server/transition_event',
         '/move_base_simple/goal',

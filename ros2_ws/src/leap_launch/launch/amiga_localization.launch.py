@@ -102,8 +102,8 @@ def generate_launch_description():
 
             # --- Initialization Parameters ---
             'init_mode': 'position_only',
-            'init_x': 0.0,   # 22
-            'init_y': 2.0,  # 121
+            'init_x': 42.0,   # 22
+            'init_y': 61.0,  # 121
             
             # Heading tuning parameters
             'init_heading_candidates': 16,
@@ -129,7 +129,7 @@ def generate_launch_description():
     ld.add_action(ekf_local_node)
     ld.add_action(ekf_global_node)
     ld.add_action(gps_transform_node)
-    ld.add_action(gps_filter_node)
+    # ld.add_action(gps_filter_node)
     ld.add_action(icp_node)
     ld.add_action(static_tf_map_odom_node)
     return ld

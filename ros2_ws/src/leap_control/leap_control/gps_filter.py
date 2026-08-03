@@ -6,6 +6,7 @@ import rclpy
 from rclpy.node import Node
 from rclpy.time import Time
 from nav_msgs.msg import Odometry
+from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 
 
 class GpsFilterNode(Node):
@@ -14,13 +15,7 @@ class GpsFilterNode(Node):
 
     Design notes (see discussion history):
     - The accept/reject tolerance is sized from GPS epoch noise plus a bound
-      on local-EKF drift growth since the anchor, NOT from the global
-      filter's covariance. Global covariance answers "how far should a
-      *self-consistent* reading be allowed to move the state" (the EKF's own
-      innovation gating already handles that) -- it says nothing about
-      whether a reading is self-consistent in the first place, and scaling
-      this check with it would make bad GPS *easier* to accept exactly when
-      the system is already confused.
+      on local-EKF drift growth since the anchor.
     - The tolerance grows with elapsed time since the anchor (bounded local
       drift really does grow with time) but is capped. Past the cap, the
       local reference is no longer trustworthy enough to judge anything
@@ -36,9 +31,6 @@ class GpsFilterNode(Node):
     def __init__(self):
         super().__init__('gps_filter')
 
-        # --- ICP health monitoring (diagnostic / gating trigger only) ---
-        self.declare_parameter('cov_threshold', 0.75)  # m^2, global filter pos variance
-
         # --- Self-consistency tolerance model ---
         # tolerance(dt) = min(max_tolerance,
         #                     consistency_sigma * (gps_noise_std + odom_drift_rate * dt))
@@ -52,7 +44,6 @@ class GpsFilterNode(Node):
         self.declare_parameter('reanchor_period_sec', 10.0)     # how often to refresh the anchor while trusted
         self.declare_parameter('anchor_max_age_sec', 30.0)      # beyond this, anchor is stale -> force re-validation
 
-        self.cov_threshold = self.get_parameter('cov_threshold').value
         self.gps_noise_std = self.get_parameter('gps_noise_std').value
         self.odom_drift_rate = self.get_parameter('odom_drift_rate').value
         self.consistency_sigma = self.get_parameter('consistency_sigma').value
@@ -63,7 +54,7 @@ class GpsFilterNode(Node):
 
         # State
         self.latest_local_odom = None
-        self.global_cov_high = False
+        self.icp_healthy = True
 
         # Confirmed anchor: the last validated (gps_pose, odom_pose, stamp_sec)
         # everything is measured against. None until a streak confirms one.
@@ -80,7 +71,7 @@ class GpsFilterNode(Node):
         self._streak_count = 0
 
         # Subscribers
-        self.create_subscription(Odometry, '/odometry/global', self.global_odom_cb, 10)
+        self.create_subscription(DiagnosticArray, '/icp/fitness', self.icp_fitness_cb, 10)
         self.create_subscription(Odometry, '/odometry/filtered', self.local_odom_cb, 10)
         self.create_subscription(Odometry, '/fix/transformed', self.gps_cb, 10)
 
@@ -92,14 +83,11 @@ class GpsFilterNode(Node):
     # ------------------------------------------------------------------
     # Subscriptions
     # ------------------------------------------------------------------
-    def global_odom_cb(self, msg: Odometry):
-        # Covariance is a 36-element array (6x6 matrix). Index 0 is X variance, 7 is Y variance.
-        cov_x = msg.pose.covariance[0]
-        cov_y = msg.pose.covariance[7]
-        max_var = max(cov_x, cov_y)
-        # Used only to decide *when* to start actively filtering GPS (i.e. as
-        # a trigger), never to size the self-consistency tolerance itself.
-        self.global_cov_high = max_var > self.cov_threshold
+    def icp_fitness_cb(self, msg: DiagnosticArray):
+        for status in msg.status:
+            if status.name == "icp_tracking":
+                # Only healthy if diagnostic status is explicitly OK
+                self.icp_healthy = (status.level == DiagnosticStatus.OK)
 
     def local_odom_cb(self, msg: Odometry):
         self.latest_local_odom = msg.pose.pose
@@ -178,11 +166,11 @@ class GpsFilterNode(Node):
         # raw sample happened to be at the moment of failure.
         self._update_streak_and_maybe_promote_anchor(gps_pose, odom_pose, stamp_sec)
 
-        if not self.global_cov_high:
+        if self.icp_healthy:
             # ICP is healthy; the global filter's own innovation gating is
             # the relevant safeguard here. Pass GPS through.
-            self.gps_pub.publish(msg)
-            self.get_logger().info("ICP healthy. GPS passed through.", throttle_duration_sec=5.0)
+            # self.gps_pub.publish(msg)
+            self.get_logger().info("ICP healthy. GPS unneeded.", throttle_duration_sec=5.0)
             return
 
         # ICP is unhealthy -- this is where the self-consistency filter

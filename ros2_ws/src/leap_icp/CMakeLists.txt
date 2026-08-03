@@ -16,6 +16,7 @@ find_package(tf2_eigen REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(diagnostic_msgs REQUIRED)
 find_package(pcl_conversions REQUIRED)
 find_package(fast_gicp REQUIRED)
 find_package(Eigen3 REQUIRED)
@@ -43,6 +44,7 @@ ament_target_dependencies(map_odom_localizer
   tf2_geometry_msgs
   sensor_msgs
   geometry_msgs
+  diagnostic_msgs
   pcl_conversions
   fast_gicp
 )

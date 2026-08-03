@@ -38,6 +38,9 @@
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <diagnostic_msgs/msg/diagnostic_array.hpp>
+#include <diagnostic_msgs/msg/diagnostic_status.hpp>
+#include <diagnostic_msgs/msg/key_value.hpp>
 
 #include <pcl_conversions/pcl_conversions.h>
 #include <pcl/point_types.h>
@@ -127,7 +130,10 @@ public:
         buildVGICP();
 
         pub_pose_ = this->create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
-            "localizer/pose", rclcpp::QoS(10));
+            "/icp/pose", rclcpp::QoS(10));
+
+        pub_fitness_diag_ = this->create_publisher<diagnostic_msgs::msg::DiagnosticArray>(
+            "/icp/fitness", rclcpp::QoS(10));
 
         // SensorDataQoS (best-effort, depth 1): drop stale scans if ICP is slow.
         sub_cloud_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
@@ -571,6 +577,10 @@ private:
 
         const double fitness   = vgicp_->getFitnessScore();
         const bool   converged = vgicp_->hasConverged();
+
+        // Published unconditionally -- see publishFitnessDiagnostics() docstring
+        // for why this must happen before the accept/reject branch below.
+        publishFitnessDiagnostics(fitness, stamp);
 
         // {
         //     auto ms = [](clock::time_point a, clock::time_point b) {
@@ -1031,6 +1041,30 @@ private:
         pub_pose_->publish(buildPoseMsg(map_to_base, stamp, fitness));
     }
 
+    /// Publishes fitness on every tracking scan, accepted or rejected.
+    /// This is deliberately NOT gated on the fitness > max_fitness_ check --
+    /// a consumer (e.g. gps_filter) needs to see fitness go bad in real time,
+    /// not only see updates while ICP happens to be healthy.
+    void publishFitnessDiagnostics(double fitness, const rclcpp::Time & stamp)
+    {
+        diagnostic_msgs::msg::DiagnosticStatus status;
+        status.name        = "icp_tracking";
+        status.hardware_id = "map_odom_localizer";
+        status.level = (fitness <= max_fitness_)
+            ? diagnostic_msgs::msg::DiagnosticStatus::OK
+            : diagnostic_msgs::msg::DiagnosticStatus::ERROR;
+
+        diagnostic_msgs::msg::KeyValue kv;
+        kv.key   = "fitness_score";
+        kv.value = std::to_string(fitness);
+        status.values.push_back(kv);
+
+        diagnostic_msgs::msg::DiagnosticArray diag_array;
+        diag_array.header.stamp = stamp;
+        diag_array.status.push_back(status);
+        pub_fitness_diag_->publish(diag_array);
+    }
+
     // =========================================================================
     //  Member variables
     // =========================================================================
@@ -1038,6 +1072,7 @@ private:
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr             sub_cloud_;
     rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_pose_;
     rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_ekf_reset_;
+    rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr        pub_fitness_diag_;
     std::shared_ptr<tf2_ros::Buffer>            tf_buffer_;
     std::shared_ptr<tf2_ros::TransformListener> tf_listener_;
 
