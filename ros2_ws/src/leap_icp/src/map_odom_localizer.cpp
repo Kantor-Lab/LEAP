@@ -5,22 +5,57 @@
  *
  * ── INITIALIZATION MODES (param: "init_mode") ────────────────────────────────
  *
- * "tf_prior"      Original behaviour. Requires the EKF to publish
+ * "tf_prior"                 Original behaviour. Requires the EKF to publish
  * map→base_link before the first scan can be processed.
  *
- * "full_pose"     You know x, y, and yaw (heading in radians).
- * Set init_x, init_y, init_yaw.  One ICP call locks in the
- * pose and seeds the EKF; normal TF-prior tracking follows.
+ * "seeded_position_heading"  MODE 1 — you know x, y, AND yaw (e.g. from a
+ * GPS+compass fix, or a saved pose). Set init_x, init_y, init_yaw.
+ * ICP spirals outward in POSITION ring by ring, and at every ring
+ * point tries a small WINDOW of headings around the seeded yaw
+ * (seed_heading_candidates, spanning ±seed_heading_tolerance_deg,
+ * tried centre-out — seeded yaw first) rather than trusting it
+ * exactly, since GPS/compass headings are rarely perfectly accurate.
+ * Much cheaper than a full 360° sweep since the window is narrow.
+ * Set seed_heading_candidates=1 to fall back to trusting the seeded
+ * yaw exactly (the original behaviour). Stops as soon as any
+ * (position, heading) candidate beats max_fitness_accept.
+ * Good when the seed is trusted but may be off by a few metres
+ * (GPS noise, stale odometry, etc) and a few degrees of heading.
+ * (legacy alias: "full_pose")
  *
- * "position_only" You know x and y but NOT the heading.
- * Set init_x, init_y.  The node tries init_heading_candidates
- * evenly-spaced yaws (coarse ICP each), picks the best, then
- * refines with a full-resolution ICP.
+ * "seeded_position"          MODE 2 — you know x, y but NOT yaw. Set init_x,
+ * init_y.  Same outward spiral as above, but at every ring point a
+ * full sweep of init_heading_candidates evenly-spaced headings is
+ * tried (coarse ICP each) since there's no heading to trust.
+ * (legacy alias: "position_only")
  *
- * "global"        No prior at all.  A grid of init_search_step metres is
- * built over every occupied map cell; a full heading sweep is
- * run at each cell.  The best candidate is then refined.
- * ⚠ Can take 10–90 s on large maps — this is expected.
+ * "no_seed"                  MODE 3 — nothing known.  A grid of
+ * global_search_step metres is built over every occupied map cell;
+ * a full heading sweep is run at each cell.  The best candidate is
+ * then refined.  ⚠ Can take 10–90 s on large maps — this is expected.
+ * (legacy alias: "global")
+ *
+ * All three search modes refine their winning candidate with a full-
+ * resolution ICP pass (vgicp_max_iterations) before locking it in.
+ *
+ * ── RUNTIME RE-SEED (param: "reinit_pose_topic", default "/icp/reinit_pose") ──
+ * Publish a geometry_msgs/PoseStamped on this topic at any time — whether
+ * the node is still initializing or already TRACKING — to force a fresh
+ * initialization from that pose.  e.g. feed it a GPS fix once ICP fitness
+ * starts degrading. A re-seed always runs as MODE 1
+ * (seeded_position_heading): a PoseStamped already carries x, y, AND yaw,
+ * so there's no ambiguity left for a heading sweep or a full grid search
+ * to resolve. The node drops back into NEEDS_INIT, spirals out from the
+ * new pose (up to "reinit_search_max_radius", default 15 m — deliberately
+ * tighter than the general "seed_search_max_radius", since a re-seed is
+ * meant as a recovery nudge, not a wide "no idea where I am" search), and
+ * resumes TRACKING once a candidate converges.
+ * A new re-seed message is REJECTED (dropped, not queued) if either:
+ *   1. a search is currently in progress, or
+ *   2. fewer than "reinit_min_interval" seconds (default 3 s) have passed
+ *      since the last search finished.
+ * This keeps a fast/continuous publisher (e.g. GPS streaming at several Hz)
+ * from repeatedly yanking the node out of TRACKING before it ever settles.
  *
  * ── TRACKING (all modes) ──────────────────────────────────────────────────────
  * Once initialization succeeds the node enters TRACKING state:
@@ -35,9 +70,12 @@
 #include <tf2_ros/transform_listener.h>
 #include <tf2_eigen/tf2_eigen.hpp>
 #include <tf2_geometry_msgs/tf2_geometry_msgs.hpp>
+#include <tf2/LinearMath/Quaternion.h>
+#include <tf2/LinearMath/Matrix3x3.h>
 
 #include <sensor_msgs/msg/point_cloud2.hpp>
 #include <geometry_msgs/msg/pose_with_covariance_stamped.hpp>
+#include <geometry_msgs/msg/pose_stamped.hpp>
 #include <diagnostic_msgs/msg/diagnostic_array.hpp>
 #include <diagnostic_msgs/msg/diagnostic_status.hpp>
 #include <diagnostic_msgs/msg/key_value.hpp>
@@ -79,10 +117,10 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 enum class InitMode {
-    TF_PRIOR,       ///< Original: always require EKF TF prior
-    FULL_POSE,      ///< x, y, yaw known
-    POSITION_ONLY,  ///< x, y known; heading unknown → heading sweep
-    GLOBAL,         ///< Nothing known → grid search over map
+    TF_PRIOR,                  ///< Original: always require EKF TF prior
+    SEEDED_POSITION_HEADING,   ///< MODE 1: x, y, yaw known → spiral position search, narrow heading window around yaw
+    SEEDED_POSITION,           ///< MODE 2: x, y known → spiral position search, heading swept at each point
+    NO_SEED,                   ///< MODE 3: nothing known → grid search over whole map
 };
 
 enum class LocalizerState {
@@ -108,6 +146,43 @@ static Eigen::Isometry3d makeXYZYaw(double x, double y, double z, double yaw)
     T.linear()          = Eigen::AngleAxisd(yaw, Eigen::Vector3d::UnitZ())
                               .toRotationMatrix();
     return T;
+}
+
+/// Enumerate the integer grid offsets forming the perimeter of a square ring
+/// at Chebyshev distance `ring` from the origin (ring=0 → just the origin).
+/// Used to walk outward from a seed position one ring at a time: ring 0 is
+/// the seed itself, ring 1 is the 8 cells around it, ring 2 the 16 around
+/// that, and so on — a simple, allocation-light spiral-search pattern.
+static std::vector<std::pair<int, int>> ringOffsets(int ring)
+{
+    std::vector<std::pair<int, int>> offs;
+    if (ring == 0) {
+        offs.emplace_back(0, 0);
+        return offs;
+    }
+
+    offs.reserve(8 * ring);
+    for (int ix = -ring; ix <= ring; ++ix) {
+        offs.emplace_back(ix, -ring);
+        offs.emplace_back(ix,  ring);
+    }
+    for (int iy = -ring + 1; iy <= ring - 1; ++iy) {
+        offs.emplace_back(-ring, iy);
+        offs.emplace_back( ring, iy);
+    }
+    return offs;
+}
+
+/// Human-readable name for logging.
+static const char * initModeName(InitMode m)
+{
+    switch (m) {
+        case InitMode::TF_PRIOR:                return "TF_PRIOR";
+        case InitMode::SEEDED_POSITION_HEADING: return "SEEDED_POSITION_HEADING";
+        case InitMode::SEEDED_POSITION:         return "SEEDED_POSITION";
+        case InitMode::NO_SEED:                 return "NO_SEED";
+    }
+    return "UNKNOWN";
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -139,6 +214,12 @@ public:
         sub_cloud_ = this->create_subscription<sensor_msgs::msg::PointCloud2>(
             lidar_topic_, rclcpp::SensorDataQoS(),
             std::bind(&MapOdomLocalizer::cloudCallback, this, std::placeholders::_1));
+
+        // Lets an external node (GPS filter, operator tool, ...) force a fresh
+        // initialization at any time by publishing a new seed pose.
+        sub_reinit_pose_ = this->create_subscription<geometry_msgs::msg::PoseStamped>(
+            reinit_pose_topic_, rclcpp::QoS(1).reliable(),
+            std::bind(&MapOdomLocalizer::reinitPoseCallback, this, std::placeholders::_1));
 
         logInitMode();
     }
@@ -173,20 +254,48 @@ private:
         declare_parameter("terrain_grid_resolution",    0.5);
 
         // ── Initialization mode ──────────────────────────────────────────────
-        // "tf_prior" | "full_pose" | "position_only" | "global"
+        // "tf_prior" | "seeded_position_heading" | "seeded_position" | "no_seed"
+        // (legacy: "full_pose" | "position_only" | "global" — still accepted)
         declare_parameter("init_mode", "tf_prior");
 
-        // Known position (used by full_pose and position_only)
+        // Seed position (used by seeded_position_heading and seeded_position)
         declare_parameter("init_x",   0.0);
         declare_parameter("init_y",   0.0);
-        // Known heading in radians — only used for full_pose
+        // Seed heading in radians — only used for seeded_position_heading
         declare_parameter("init_yaw", 0.0);
 
-        // Heading candidates to try per position (position_only and global)
+        // Heading candidates to try per position (seeded_position and no_seed)
         declare_parameter("init_heading_candidates", 16);
 
-        // Grid step in metres for global search
+        // seeded_position_heading: rather than trusting init_yaw exactly,
+        // try a narrow window of headings around it at every spiral
+        // position (heading sensors/estimates are rarely perfect).
+        // Candidates are tried centre-out (seeded yaw first, then
+        // expanding ± steps), so a good seed still resolves in one ICP
+        // call — the window only costs extra when the seed actually
+        // needed correcting. Set to 1 to trust init_yaw exactly (the
+        // original, pre-window behaviour). An odd number includes the
+        // seeded yaw itself as one of the candidates.
+        declare_parameter("seed_heading_candidates",   5);
+        declare_parameter("seed_heading_tolerance_deg", 20.0);
+
+        // Grid step in metres for the no_seed grid search
         declare_parameter("global_search_step", 5.0);
+
+        // Ring spacing in metres for the seeded_position[_heading] spiral search
+        declare_parameter("seed_search_step", 2.0);
+        // Give up (stay in NEEDS_INIT, retry next scan) once the spiral has
+        // walked out this far without a candidate beating max_fitness_accept.
+        // Applies to the ORIGINALLY CONFIGURED init_mode's seed (init_x/init_y),
+        // where the guess might only be roughly known.
+        declare_parameter("seed_search_max_radius", 30.0);
+
+        // Separate (and normally tighter) give-up radius used ONLY when the
+        // seed came from a runtime re-seed on reinit_pose_topic. A re-seed
+        // is meant as a recovery nudge — tracking was presumably fine until
+        // just recently — so it doesn't need to search as wide as the
+        // general startup seed above.
+        declare_parameter("reinit_search_max_radius", 15.0);
 
         // ICP iteration budget for the *search* phase.
         // Fewer iterations = faster sweep; the best candidate is always
@@ -195,6 +304,21 @@ private:
 
         // Override the default EKF starting pose
         declare_parameter("ekf_reset_topic", "/set_pose");
+
+        // Publish a geometry_msgs/PoseStamped here at any time to force a
+        // fresh re-initialization (always run as seeded_position_heading —
+        // see the file docstring). e.g. wire a GPS filter to this topic so
+        // it can recover ICP after a bad patch.
+        declare_parameter("reinit_pose_topic", "/icp/reinit_pose");
+
+        // Minimum time between ACCEPTED re-seeds. Guards against a fast /
+        // continuously-publishing source (e.g. a GPS filter streaming at
+        // several Hz) yanking the node back into NEEDS_INIT on every message
+        // and re-running the full spiral search before it ever gets a
+        // chance to settle into TRACKING. Extra messages inside the cooldown
+        // window are simply dropped (the next one after the window reopens
+        // still wins with its own fresh pose).
+        declare_parameter("reinit_min_interval", 3.0);
 
         // CUDA-only: which NN search backend FastVGICPCuda should use.
         // "cpu_kdtree" | "gpu_bruteforce" | "gpu_rbf_kernel"
@@ -227,22 +351,47 @@ private:
         init_yaw_ = get_parameter("init_yaw").as_double();
 
         init_heading_candidates_ = get_parameter("init_heading_candidates").as_int();
+        seed_heading_candidates_ = get_parameter("seed_heading_candidates").as_int();
+        seed_heading_tolerance_  = get_parameter("seed_heading_tolerance_deg").as_double() * M_PI / 180.0;
         global_search_step_      = get_parameter("global_search_step").as_double();
+        seed_search_step_        = get_parameter("seed_search_step").as_double();
+        seed_search_max_radius_  = get_parameter("seed_search_max_radius").as_double();
+        reinit_search_max_radius_ = get_parameter("reinit_search_max_radius").as_double();
         init_search_max_iter_    = get_parameter("init_search_max_iter").as_int();
 
-        ekf_reset_topic_ = get_parameter("ekf_reset_topic").as_string();
-        cuda_nn_method_  = get_parameter("cuda_nn_method").as_string();
+        ekf_reset_topic_    = get_parameter("ekf_reset_topic").as_string();
+        reinit_pose_topic_  = get_parameter("reinit_pose_topic").as_string();
+        reinit_min_interval_ = get_parameter("reinit_min_interval").as_double();
+        cuda_nn_method_     = get_parameter("cuda_nn_method").as_string();
 
         const std::string mode_str = get_parameter("init_mode").as_string();
-        if      (mode_str == "full_pose")     init_mode_ = InitMode::FULL_POSE;
-        else if (mode_str == "position_only") init_mode_ = InitMode::POSITION_ONLY;
-        else if (mode_str == "global")        init_mode_ = InitMode::GLOBAL;
-        else {
+        if (mode_str == "seeded_position_heading" || mode_str == "full_pose") {
+            init_mode_ = InitMode::SEEDED_POSITION_HEADING;
+            if (mode_str == "full_pose")
+                RCLCPP_WARN(get_logger(),
+                    "init_mode 'full_pose' is a deprecated alias — use 'seeded_position_heading'.");
+        } else if (mode_str == "seeded_position" || mode_str == "position_only") {
+            init_mode_ = InitMode::SEEDED_POSITION;
+            if (mode_str == "position_only")
+                RCLCPP_WARN(get_logger(),
+                    "init_mode 'position_only' is a deprecated alias — use 'seeded_position'.");
+        } else if (mode_str == "no_seed" || mode_str == "global") {
+            init_mode_ = InitMode::NO_SEED;
+            if (mode_str == "global")
+                RCLCPP_WARN(get_logger(),
+                    "init_mode 'global' is a deprecated alias — use 'no_seed'.");
+        } else {
             if (mode_str != "tf_prior")
                 RCLCPP_WARN(get_logger(),
                     "Unknown init_mode '%s' — defaulting to 'tf_prior'.", mode_str.c_str());
             init_mode_ = InitMode::TF_PRIOR;
         }
+
+        // active_init_mode_ is what actually drives behaviour; init_mode_ is
+        // just the launch-time configuration. A runtime re-seed (see
+        // reinitPoseCallback) only ever changes active_init_mode_, so the
+        // originally configured mode is always still recoverable/loggable.
+        active_init_mode_ = init_mode_;
 
         // TF_PRIOR skips NEEDS_INIT entirely (original behaviour).
         if (init_mode_ == InitMode::TF_PRIOR)
@@ -251,29 +400,37 @@ private:
 
     void logInitMode() const
     {
-        switch (init_mode_) {
+        switch (active_init_mode_) {
             case InitMode::TF_PRIOR:
                 RCLCPP_INFO(get_logger(),
                     "[init] mode=TF_PRIOR — waiting for EKF map→base_link TF.");
                 break;
-            case InitMode::FULL_POSE:
+            case InitMode::SEEDED_POSITION_HEADING:
                 RCLCPP_INFO(get_logger(),
-                    "[init] mode=FULL_POSE  x=%.2f  y=%.2f  yaw=%.3f rad",
-                    init_x_, init_y_, init_yaw_);
+                    "[init] mode=SEEDED_POSITION_HEADING  x=%.2f  y=%.2f  yaw=%.3f rad  "
+                    "(spiral: step=%.1fm  max_radius=%.1fm  x  %d headings within ±%.1f°)",
+                    init_x_, init_y_, init_yaw_, seed_search_step_, seed_search_max_radius_,
+                    seed_heading_candidates_, seed_heading_tolerance_ * 180.0 / M_PI);
                 break;
-            case InitMode::POSITION_ONLY:
+            case InitMode::SEEDED_POSITION:
                 RCLCPP_INFO(get_logger(),
-                    "[init] mode=POSITION_ONLY  x=%.2f  y=%.2f  "
-                    "(sweeping %d headings on first scan)",
-                    init_x_, init_y_, init_heading_candidates_);
+                    "[init] mode=SEEDED_POSITION  x=%.2f  y=%.2f  "
+                    "(spiral: step=%.1fm  max_radius=%.1fm  %d headings/point)",
+                    init_x_, init_y_, seed_search_step_, seed_search_max_radius_,
+                    init_heading_candidates_);
                 break;
-            case InitMode::GLOBAL:
+            case InitMode::NO_SEED:
                 RCLCPP_INFO(get_logger(),
-                    "[init] mode=GLOBAL  grid_step=%.1f m  headings=%d  "
+                    "[init] mode=NO_SEED  grid_step=%.1f m  headings=%d  "
                     "⚠ may take 10–90 s on first scan for large maps",
                     global_search_step_, init_heading_candidates_);
                 break;
         }
+        RCLCPP_INFO(get_logger(),
+            "[init] Runtime re-seed: publish geometry_msgs/PoseStamped on '%s' "
+            "to force a fresh initialization at any time (spiral max_radius=%.1fm, "
+            "cooldown=%.1fs after each search).",
+            reinit_pose_topic_.c_str(), reinit_search_max_radius_, reinit_min_interval_);
     }
 
     // =========================================================================
@@ -518,7 +675,7 @@ private:
             RCLCPP_INFO(get_logger(), "Matcher: cuVGICP (CUDA GPU, NN=CPU_PARALLEL_KDTREE)");
         }
 #endif
-        // Set the global map by default (needed immediately if GLOBAL init mode is used)
+        // Set the global map by default (needed immediately if NO_SEED init mode is used)
         vgicp_->setInputTarget(global_map_);
 
         pub_ekf_reset_ = create_publisher<geometry_msgs::msg::PoseWithCovarianceStamped>(
@@ -617,52 +774,79 @@ private:
     //  Initialization dispatcher
     // =========================================================================
 
+    /// RAII helper: marks init_search_in_progress_ for the duration of
+    /// runInitialization() and unconditionally records the finish time on
+    /// scope exit (success OR failure — every return path is covered
+    /// automatically, so there's no way to forget to stamp one).
+    /// Used together to gate reinitPoseCallback(): reject while a search is
+    /// running, and reject for reinit_min_interval_ seconds after one ends.
+    struct InitSearchGuard {
+        MapOdomLocalizer * node;
+        explicit InitSearchGuard(MapOdomLocalizer * n) : node(n) {
+            node->init_search_in_progress_ = true;
+        }
+        ~InitSearchGuard() {
+            node->init_search_in_progress_ = false;
+            node->last_init_finish_time_   = node->get_clock()->now();
+        }
+    };
+
+    /// Which spiral give-up radius applies right now — see the parameter
+    /// declarations for seed_search_max_radius vs. reinit_search_max_radius.
+    double activeSpiralMaxRadius() const
+    {
+        return came_from_reinit_ ? reinit_search_max_radius_ : seed_search_max_radius_;
+    }
+
     void runInitialization(const pcl::PointCloud<pcl::PointXYZI>::Ptr & scan,
                            const rclcpp::Time & stamp)
     {
-        RCLCPP_INFO(get_logger(), "[init] Processing first scan for initialization…");
+        // Marks init_search_in_progress_ = true for the rest of this
+        // function, and records last_init_finish_time_ on return no matter
+        // which path is taken below — see InitSearchGuard.
+        InitSearchGuard search_guard(this);
+
+        RCLCPP_INFO(get_logger(), "[init] Processing scan for initialization (mode=%s)…",
+            initModeName(active_init_mode_));
 
         // Set source ONCE here — all tryAlignAt calls reuse the cached
         // source covariances without re-preprocessing.
         vgicp_->setInputSource(scan);
 
-        switch (init_mode_) {
+        // Always search against the FULL map here, never a cropped submap:
+        // a stale local submap left over from a previous tracking session
+        // (or an earlier runtime re-seed) may not even cover the new seed /
+        // search area. TRACKING switches back to an efficient local submap
+        // once finishInit() succeeds.
+        vgicp_->setInputTarget(global_map_);
 
-            // ── MODE 1: Full pose known ───────────────────────────────────────
-            case InitMode::FULL_POSE: {
-                double z = getElevationAt(init_x_, init_y_);
-                updateLocalMap(Eigen::Vector3d(init_x_, init_y_, z));
-                auto guess = makeXYZYaw(init_x_, init_y_, z, init_yaw_);
-                auto [pose, fitness] = tryAlignAt(guess, vgicp_max_iter_);
+        switch (active_init_mode_) {
 
-                if (fitness > max_fitness_) {
-                    RCLCPP_WARN(get_logger(),
-                        "[init] FULL_POSE ICP fitness=%.4f > threshold=%.4f. "
-                        "Check init_x/init_y/init_yaw. Will retry on next scan.",
-                        fitness, max_fitness_);
-                    return;  // stay in NEEDS_INIT
-                }
-
-                RCLCPP_INFO(get_logger(),
-                    "[init] FULL_POSE locked in — fitness=%.4f  "
-                    "pos=(%.2f, %.2f, %.2f)",
-                    fitness,
-                    pose.translation().x(), pose.translation().y(), pose.translation().z());
-                finishInit(pose, stamp, fitness);
-                return;
-            }
-
-            // ── MODE 2: Position known, heading unknown ───────────────────────
-            case InitMode::POSITION_ONLY: {
-                double z = getElevationAt(init_x_, init_y_);
-                updateLocalMap(Eigen::Vector3d(init_x_, init_y_, z));
-                auto coarse = headingSweep(init_x_, init_y_);
-                if (!coarse) return;  // warning already logged inside sweep
+            // ── MODE 1: Seeded position + heading ─────────────────────────────
+            case InitMode::SEEDED_POSITION_HEADING: {
+                auto coarse = spiralSearchSeededHeading(
+                    init_x_, init_y_, init_yaw_, activeSpiralMaxRadius());
+                if (!coarse) return;  // warning already logged inside the spiral
 
                 // Refine winner with full iteration budget
                 auto [refined, fitness] = tryAlignAt(*coarse, vgicp_max_iter_);
                 RCLCPP_INFO(get_logger(),
-                    "[init] POSITION_ONLY refined fitness=%.4f  "
+                    "[init] SEEDED_POSITION_HEADING refined fitness=%.4f  "
+                    "pos=(%.2f, %.2f, %.2f)",
+                    fitness,
+                    refined.translation().x(), refined.translation().y(), refined.translation().z());
+                finishInit(refined, stamp, fitness);
+                return;
+            }
+
+            // ── MODE 2: Seeded position, heading unknown ──────────────────────
+            case InitMode::SEEDED_POSITION: {
+                auto coarse = spiralSearchHeadingSweep(init_x_, init_y_, seed_search_max_radius_);
+                if (!coarse) return;  // warning already logged inside the spiral
+
+                auto [refined, fitness] = tryAlignAt(*coarse, vgicp_max_iter_);
+                RCLCPP_INFO(get_logger(),
+                    "[init] SEEDED_POSITION refined fitness=%.4f  "
                     "pos=(%.2f, %.2f, %.2f)  yaw=%.3f rad",
                     fitness,
                     refined.translation().x(), refined.translation().y(), refined.translation().z(),
@@ -671,15 +855,15 @@ private:
                 return;
             }
 
-            // ── MODE 3: Nothing known — grid search ───────────────────────────
-            case InitMode::GLOBAL: {
+            // ── MODE 3: No seed at all — grid search ──────────────────────────
+            case InitMode::NO_SEED: {
                 // Relies on global_map_ (which is pre-set in buildVGICP)
-                auto coarse = globalSearch();
+                auto coarse = noSeedSearch();
                 if (!coarse) return;  // warning already logged inside search
 
                 auto [refined, fitness] = tryAlignAt(*coarse, vgicp_max_iter_);
                 RCLCPP_INFO(get_logger(),
-                    "[init] GLOBAL refined fitness=%.4f  "
+                    "[init] NO_SEED refined fitness=%.4f  "
                     "pos=(%.2f, %.2f, %.2f)  yaw=%.3f rad",
                     fitness,
                     refined.translation().x(), refined.translation().y(), refined.translation().z(),
@@ -689,7 +873,9 @@ private:
             }
 
             case InitMode::TF_PRIOR:
-                // Should never reach here — state_ is set to TRACKING in loadParams().
+                // Should never reach here — state_ is set to TRACKING in
+                // loadParams(), and reinitPoseCallback() never sets
+                // active_init_mode_ back to TF_PRIOR.
                 state_ = LocalizerState::TRACKING;
                 return;
         }
@@ -701,6 +887,15 @@ private:
         post_init_warmup_ = 5;  // use last_good_pose_ as prior for the first 5 tracking scans
         last_good_pose_ = pose;
         state_           = LocalizerState::TRACKING;
+
+        // The search phase intentionally matched against the full global map
+        // (see runInitialization) since seed/spiral candidates can land
+        // arbitrarily far from any previous submap. Force a fresh, tight
+        // local submap around the pose we just locked in before tracking
+        // resumes, so per-scan ICP stays cheap.
+        last_submap_center_ = Eigen::Vector3d(
+            std::numeric_limits<double>::max(), 0.0, 0.0);
+        updateLocalMap(pose.translation());
 
         publishPose(pose, stamp, fitness);
         // Also hard-reset the EKF to this pose so it doesn't spend
@@ -718,60 +913,283 @@ private:
     }
 
     // =========================================================================
-    //  Heading sweep  (MODE 2 and per-cell in MODE 3)
+    //  Runtime re-seed
     // =========================================================================
 
-    /// Try init_heading_candidates_ evenly-spaced yaws at (x, y).
+    /// Accepts a fresh seed pose at any time — whether the node is still
+    /// NEEDS_INIT or already TRACKING — and restarts initialization from it.
+    /// Always re-seeds via SEEDED_POSITION_HEADING: a PoseStamped already
+    /// carries x, y, AND yaw, so there's no ambiguity left for a heading
+    /// sweep or a full grid search to resolve. Typical use: wire a GPS
+    /// filter's output to this topic so it can pull ICP back onto the map
+    /// once tracking fitness starts degrading.
+    ///
+    /// Gated two ways so a fast/continuous publisher (e.g. a GPS filter
+    /// streaming at several Hz) can't repeatedly yank the node out of
+    /// TRACKING before it ever settles:
+    ///   1. Rejected outright while a search is currently in progress
+    ///      (init_search_in_progress_, set by InitSearchGuard).
+    ///   2. Rejected for reinit_min_interval_ seconds after the LAST search
+    ///      actually finished (last_init_finish_time_) — not from when a
+    ///      message was merely received, so a slow search can't be
+    ///      interrupted the instant it completes.
+    /// Either way, extra messages are simply dropped; the next one that
+    /// arrives once both gates are clear wins with its own (by then more
+    /// current) pose.
+    ///
+    /// NOTE: assumes a single-threaded executor (the ROS 2 default for this
+    /// node) — which is also what makes gate #1 possible to check reliably.
+    /// If this node is ever run with a multi-threaded executor, all of
+    /// state_ / init_x_ / init_y_ / init_yaw_ / active_init_mode_ /
+    /// came_from_reinit_ / init_search_in_progress_ / last_init_finish_time_
+    /// would need a mutex, since they're also touched from cloudCallback().
+    void reinitPoseCallback(const geometry_msgs::msg::PoseStamped::SharedPtr msg)
+    {
+        if (init_search_in_progress_) {
+            RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                "[reinit] Ignoring re-seed — a search is currently in progress.");
+            return;
+        }
+
+        if (last_init_finish_time_) {
+            const double dt = (get_clock()->now() - *last_init_finish_time_).seconds();
+            if (dt < reinit_min_interval_) {
+                RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 5000,
+                    "[reinit] Ignoring re-seed — only %.2fs since the last search finished "
+                    "(reinit_min_interval=%.2fs). If you're streaming from a continuous "
+                    "source (e.g. GPS), this is expected and intentional.",
+                    dt, reinit_min_interval_);
+                return;
+            }
+        }
+
+        if (!msg->header.frame_id.empty() && msg->header.frame_id != map_frame_) {
+            RCLCPP_WARN(get_logger(),
+                "[reinit] Pose frame_id='%s' does not match map_frame='%s' — "
+                "proceeding anyway (assuming it was already transformed into the map frame).",
+                msg->header.frame_id.c_str(), map_frame_.c_str());
+        }
+
+        tf2::Quaternion q;
+        tf2::fromMsg(msg->pose.orientation, q);
+        double roll, pitch, yaw;
+        tf2::Matrix3x3(q).getRPY(roll, pitch, yaw);
+
+        init_x_   = msg->pose.position.x;
+        init_y_   = msg->pose.position.y;
+        init_yaw_ = yaw;
+
+        active_init_mode_ = InitMode::SEEDED_POSITION_HEADING;
+        came_from_reinit_ = true;  // sticky — uses reinit_search_max_radius_ from here on
+
+        // Force the next init pass to re-search the full map, and force a
+        // submap recentre once it succeeds (see runInitialization / finishInit).
+        last_submap_center_ = Eigen::Vector3d(
+            std::numeric_limits<double>::max(), 0.0, 0.0);
+
+        const bool was_tracking = (state_ == LocalizerState::TRACKING);
+        state_ = LocalizerState::NEEDS_INIT;
+
+        RCLCPP_WARN(get_logger(),
+            "[reinit] New seed received (was %s) — x=%.2f  y=%.2f  yaw=%.3f rad. "
+            "Re-running SEEDED_POSITION_HEADING spiral search (max_radius=%.1fm) "
+            "on the next scan.",
+            was_tracking ? "TRACKING" : "NEEDS_INIT",
+            init_x_, init_y_, init_yaw_, reinit_search_max_radius_);
+    }
+
+    // =========================================================================
+    //  Heading sweep core  (used per-point by MODE 2, and per-cell in MODE 3)
+    // =========================================================================
+
+    /// Try init_heading_candidates_ evenly-spaced yaws at (x, y) and return
+    /// whichever had the lowest fitness. Always returns a pose (as long as
+    /// init_heading_candidates_ >= 1) — the caller decides whether the
+    /// fitness is actually good enough.
     /// vgicp_ source must already be set before calling.
-    /// Returns the coarse-ICP pose with the lowest fitness, or nullopt if none
-    /// beat max_fitness_.
-    std::optional<Eigen::Isometry3d>
-    headingSweep(double x, double y)
+    std::pair<std::optional<Eigen::Isometry3d>, double>
+    headingSweepCore(double x, double y)
     {
         double best_fitness = std::numeric_limits<double>::max();
         std::optional<Eigen::Isometry3d> best_pose;
-        
+
         // Inject dynamic Z here
-        double z = getElevationAt(x, y);
+        const double z = getElevationAt(x, y);
 
         const double step = 2.0 * M_PI / init_heading_candidates_;
         for (int i = 0; i < init_heading_candidates_; ++i) {
             const double yaw = i * step;
             auto [pose, fitness] = tryAlignAt(makeXYZYaw(x, y, z, yaw), init_search_max_iter_);
             RCLCPP_DEBUG(get_logger(),
-                "[init/sweep] yaw=%.2f rad  fitness=%.4f", yaw, fitness);
+                "[init/sweep] (%.2f, %.2f) yaw=%.2f rad  fitness=%.4f", x, y, yaw, fitness);
             if (fitness < best_fitness) {
                 best_fitness = fitness;
                 best_pose    = pose;
             }
         }
+        return {best_pose, best_fitness};
+    }
 
-        RCLCPP_INFO(get_logger(),
-            "[init/sweep] Done at (%.2f, %.2f, %.2f) — best fitness=%.4f",
-            x, y, z, best_fitness);
+    /// Builds the heading offsets tried at every spiral position in
+    /// spiralSearchSeededHeading(), ordered CENTRE-OUT: [0, +step, -step,
+    /// +2·step, -2·step, ...] up to ±seed_heading_tolerance_. Trying 0
+    /// (the seeded yaw exactly) first means a genuinely good seed still
+    /// resolves in a single ICP call per position — the window only costs
+    /// extra ICP calls when the seed actually needed correcting.
+    /// seed_heading_candidates_ <= 1 → just {0.0} (trust the seed exactly).
+    std::vector<double> headingWindowOffsets() const
+    {
+        if (seed_heading_candidates_ <= 1)
+            return {0.0};
 
-        if (best_fitness > max_fitness_) {
-            RCLCPP_WARN(get_logger(),
-                "[init/sweep] Best fitness %.4f > threshold %.4f. "
-                "Verify init_x / init_y. Will retry on next scan.",
-                best_fitness, max_fitness_);
-            return std::nullopt;
+        std::vector<double> offsets;
+        offsets.reserve(seed_heading_candidates_);
+
+        const bool include_center = (seed_heading_candidates_ % 2) == 1;
+        const int  half           = seed_heading_candidates_ / 2;
+        const double step = seed_heading_tolerance_ / std::max(1, half);
+
+        if (include_center) offsets.push_back(0.0);
+        for (int i = 1; i <= half; ++i) {
+            offsets.push_back( i * step);
+            offsets.push_back(-i * step);
         }
-        return best_pose;
+        return offsets;
     }
 
     // =========================================================================
-    //  Global grid search  (MODE 3)
+    //  Spiral search around a seed position  (MODE 1 and MODE 2)
     // =========================================================================
 
-    /// Grid over every occupied map cell × heading sweep.
+    /// MODE 1 — x, y trusted; yaw is a SEED, not gospel. Spirals outward in
+    /// position ring by ring (see ringOffsets); at every ring point, tries
+    /// the narrow centre-out heading window from headingWindowOffsets()
+    /// around the seeded yaw instead of trusting it exactly (GPS/compass
+    /// headings are rarely perfectly accurate). Stops at the very first
+    /// (position, heading) candidate that beats max_fitness_accept — this
+    /// early exit is deliberate: we trust the seed enough that we just
+    /// need tolerance for a few metres of position error and a few degrees
+    /// of heading error, not an exhaustive search over either.
+    /// `max_radius` lets the caller pick seed_search_max_radius_ (startup
+    /// seed) vs. reinit_search_max_radius_ (runtime re-seed) — see
+    /// activeSpiralMaxRadius().
+    /// vgicp_ source must already be set, and the target must already cover
+    /// the whole search area (runInitialization sets it to global_map_)
+    /// before calling.
+    std::optional<Eigen::Isometry3d>
+    spiralSearchSeededHeading(double seed_x, double seed_y, double seed_yaw, double max_radius)
+    {
+        const int max_ring = std::max(0, static_cast<int>(
+            std::ceil(max_radius / seed_search_step_)));
+        const std::vector<double> yaw_offsets = headingWindowOffsets();
+
+        double best_fitness = std::numeric_limits<double>::max();
+        std::optional<Eigen::Isometry3d> best_pose;
+        size_t calls = 0;
+
+        for (int ring = 0; ring <= max_ring; ++ring) {
+            for (const auto & [dix, diy] : ringOffsets(ring)) {
+                const double x = seed_x + dix * seed_search_step_;
+                const double y = seed_y + diy * seed_search_step_;
+                const double z = getElevationAt(x, y);
+
+                for (const double dyaw : yaw_offsets) {
+                    auto [pose, fitness] = tryAlignAt(
+                        makeXYZYaw(x, y, z, seed_yaw + dyaw), init_search_max_iter_);
+                    ++calls;
+
+                    if (fitness < best_fitness) {
+                        best_fitness = fitness;
+                        best_pose    = pose;
+                    }
+                    if (fitness <= max_fitness_) {
+                        RCLCPP_INFO(get_logger(),
+                            "[init/spiral] Match at ring=%d (radius=%.1fm) pos=(%.2f, %.2f) "
+                            "yaw_offset=%+.1f°  after %zu ICP call(s) — fitness=%.4f",
+                            ring, ring * seed_search_step_, x, y,
+                            dyaw * 180.0 / M_PI, calls, fitness);
+                        return best_pose;
+                    }
+                }
+            }
+            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+                "[init/spiral] searched ring=%d/%d (radius=%.1f/%.1fm) × "
+                "%zu headings/point, %zu ICP call(s) so far, best_fitness=%.4f",
+                ring, max_ring, ring * seed_search_step_, max_radius,
+                yaw_offsets.size(), calls, best_fitness);
+        }
+
+        RCLCPP_WARN(get_logger(),
+            "[init/spiral] Exhausted search radius=%.1fm × ±%.1f° heading window "
+            "(%zu ICP calls) without reaching threshold=%.4f. Best fitness=%.4f. "
+            "Check init_x/init_y/init_yaw, or increase seed_search_max_radius / "
+            "seed_heading_tolerance_deg / reinit_search_max_radius. Will retry on next scan.",
+            max_radius, seed_heading_tolerance_ * 180.0 / M_PI, calls, max_fitness_, best_fitness);
+        return std::nullopt;
+    }
+
+    /// MODE 2 — x, y trusted, yaw unknown. Same outward spiral as above, but
+    /// sweeps init_heading_candidates_ headings at every ring point (via
+    /// headingSweepCore) since there's no heading to narrow things down with.
+    /// Stops at the first ring point whose best heading beats max_fitness_accept.
+    std::optional<Eigen::Isometry3d>
+    spiralSearchHeadingSweep(double seed_x, double seed_y, double max_radius)
+    {
+        const int max_ring = std::max(0, static_cast<int>(
+            std::ceil(max_radius / seed_search_step_)));
+
+        double best_fitness = std::numeric_limits<double>::max();
+        std::optional<Eigen::Isometry3d> best_pose;
+        size_t calls = 0;
+
+        for (int ring = 0; ring <= max_ring; ++ring) {
+            for (const auto & [dix, diy] : ringOffsets(ring)) {
+                const double x = seed_x + dix * seed_search_step_;
+                const double y = seed_y + diy * seed_search_step_;
+
+                auto [pose, fitness] = headingSweepCore(x, y);
+                calls += static_cast<size_t>(init_heading_candidates_);
+
+                if (fitness < best_fitness) {
+                    best_fitness = fitness;
+                    best_pose    = pose;
+                }
+                if (pose && fitness <= max_fitness_) {
+                    RCLCPP_INFO(get_logger(),
+                        "[init/spiral] Match at ring=%d (radius=%.1fm) pos=(%.2f, %.2f) "
+                        "after %zu ICP call(s) — fitness=%.4f",
+                        ring, ring * seed_search_step_, x, y, calls, fitness);
+                    return best_pose;
+                }
+            }
+            RCLCPP_INFO_THROTTLE(get_logger(), *get_clock(), 2000,
+                "[init/spiral] searched ring=%d/%d (radius=%.1f/%.1fm), "
+                "%zu ICP call(s) so far, best_fitness=%.4f",
+                ring, max_ring, ring * seed_search_step_, max_radius,
+                calls, best_fitness);
+        }
+
+        RCLCPP_WARN(get_logger(),
+            "[init/spiral] Exhausted search radius=%.1fm (%zu ICP calls) without "
+            "reaching threshold=%.4f. Best fitness=%.4f. Check init_x/init_y, "
+            "or increase seed_search_max_radius. Will retry on next scan.",
+            max_radius, calls, max_fitness_, best_fitness);
+        return std::nullopt;
+    }
+
+    // =========================================================================
+    //  No-seed grid search  (MODE 3)
+    // =========================================================================
+
+    /// Grid over every occupied map cell × heading sweep — used when nothing
+    /// at all is known about the robot's pose.
     /// vgicp_ source must already be set before calling.
     ///
     /// Candidate positions are derived directly from the map point cloud:
     /// each cell that contains ≥1 map point becomes one candidate (at the
     /// cell centre).  Empty cells (open space, voids) are skipped, which
     /// keeps the call count proportional to the mapped area, not the bbox.
-    std::optional<Eigen::Isometry3d> globalSearch()
+    std::optional<Eigen::Isometry3d> noSeedSearch()
     {
         // ── Build the set of occupied grid cells ─────────────────────────────
         // Two int32_t packed into a uint64_t — sign-safe via uint32_t reinterpret.
@@ -803,7 +1221,7 @@ private:
         const size_t total =
             candidates.size() * static_cast<size_t>(init_heading_candidates_);
         RCLCPP_INFO(get_logger(),
-            "[init/global] %zu occupied cells × %d headings = %zu ICP calls. "
+            "[init/no_seed] %zu occupied cells × %d headings = %zu ICP calls. "
             "Map extents: %.0f × %.0f m — standing by…",
             candidates.size(), init_heading_candidates_, total,
             static_cast<double>(map_max_x_ - map_min_x_),
@@ -830,17 +1248,17 @@ private:
                 // Progress heartbeat every 100 calls
                 if (++count % 100 == 0)
                     RCLCPP_INFO(get_logger(),
-                        "[init/global] %zu / %zu  best_fitness=%.4f",
+                        "[init/no_seed] %zu / %zu  best_fitness=%.4f",
                         count, total, best_fitness);
             }
         }
 
         RCLCPP_INFO(get_logger(),
-            "[init/global] Search complete — best fitness=%.4f", best_fitness);
+            "[init/no_seed] Search complete — best fitness=%.4f", best_fitness);
 
         if (best_fitness > max_fitness_) {
             RCLCPP_WARN(get_logger(),
-                "[init/global] No candidate below threshold=%.4f. "
+                "[init/no_seed] No candidate below threshold=%.4f. "
                 "Try: increasing max_fitness_accept, reducing global_search_step, "
                 "or checking the map / sensor calibration.",
                 max_fitness_);
@@ -905,7 +1323,7 @@ private:
 
         } catch (const tf2::TransformException & ex) {
 
-            if (init_mode_ == InitMode::TF_PRIOR) {
+            if (active_init_mode_ == InitMode::TF_PRIOR) {
                 RCLCPP_WARN_THROTTLE(get_logger(), *get_clock(), 10'000,
                     "[TRACKING] Waiting for EKF TF: %s", ex.what());
                 return std::nullopt;
@@ -1070,6 +1488,7 @@ private:
     // =========================================================================
 
     rclcpp::Subscription<sensor_msgs::msg::PointCloud2>::SharedPtr             sub_cloud_;
+    rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr           sub_reinit_pose_;
     rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_pose_;
     rclcpp::Publisher<geometry_msgs::msg::PoseWithCovarianceStamped>::SharedPtr pub_ekf_reset_;
     rclcpp::Publisher<diagnostic_msgs::msg::DiagnosticArray>::SharedPtr        pub_fitness_diag_;
@@ -1088,15 +1507,26 @@ private:
     std::unordered_map<uint64_t, double> elevation_grid_;
 
     // ── Init config ──────────────────────────────────────────────────────────
-    InitMode init_mode_               = InitMode::TF_PRIOR;
+    InitMode init_mode_               = InitMode::TF_PRIOR;  ///< launch-time configured mode
+    InitMode active_init_mode_        = InitMode::TF_PRIOR;  ///< operative mode — can change via reinitPoseCallback
     double   init_x_                  = 0.0;
     double   init_y_                  = 0.0;
     double   init_yaw_                = 0.0;
     int      init_heading_candidates_ = 16;
-    double   global_search_step_      = 5.0;
+    int      seed_heading_candidates_ = 5;     ///< SEEDED_POSITION_HEADING: headings tried per spiral position
+    double   seed_heading_tolerance_  = 20.0 * M_PI / 180.0;  ///< ± window around init_yaw (radians)
+    double   global_search_step_      = 5.0;   ///< NO_SEED grid step (metres)
+    double   seed_search_step_        = 2.0;   ///< SEEDED_POSITION[_HEADING] spiral ring spacing (metres)
+    double   seed_search_max_radius_  = 30.0;  ///< startup-seed spiral give-up radius (metres)
+    double   reinit_search_max_radius_ = 15.0; ///< runtime-re-seed spiral give-up radius (metres) — see activeSpiralMaxRadius()
+    bool     came_from_reinit_        = false; ///< sticky once true — set by reinitPoseCallback
     int      init_search_max_iter_    = 20;
 
     std::string ekf_reset_topic_;
+    std::string reinit_pose_topic_;
+    double      reinit_min_interval_ = 3.0;  ///< cooldown after a search finishes before another reinit is accepted (s)
+    bool        init_search_in_progress_ = false;  ///< set by InitSearchGuard for the duration of runInitialization()
+    std::optional<rclcpp::Time> last_init_finish_time_;  ///< set by InitSearchGuard when a search (any outcome) ends
     std::string cuda_nn_method_ = "gpu_rbf_kernel";  ///< CUDA-only: NN search backend
 
     // ── Runtime state ─────────────────────────────────────────────────────────

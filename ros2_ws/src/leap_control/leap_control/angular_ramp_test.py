@@ -1,4 +1,7 @@
-#!/usr/bin/env python3
+"""
+Random file for testing how well the Amiga can follow angular velocity commands by plotting
+/cmd_vel against /odometry/filtered and /odometry/global.
+"""
 
 import csv
 import rclpy

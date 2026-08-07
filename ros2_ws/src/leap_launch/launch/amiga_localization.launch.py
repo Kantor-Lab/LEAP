@@ -102,8 +102,8 @@ def generate_launch_description():
 
             # --- Initialization Parameters ---
             'init_mode': 'position_only',
-            'init_x': 42.0,   # 22
-            'init_y': 61.0,  # 121
+            'init_x': 42.0,   # 42
+            'init_y': 61.0,   # 61
             
             # Heading tuning parameters
             'init_heading_candidates': 16,

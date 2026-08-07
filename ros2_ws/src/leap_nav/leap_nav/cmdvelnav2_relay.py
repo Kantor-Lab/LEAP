@@ -1,4 +1,9 @@
-#!/usr/bin/env python3
+"""
+This is from a pretty old issue I was having where the robot would reach the goal but then
+continue moving forwards from the last thing nav2 sent. I added this watchdog to monitor the
+path topic and stop the robot if it hasn't received a new path in a while. You can see that I
+essentially disabled it by setting timeout_duration to something ridiculous.
+"""
 
 import rclpy
 from rclpy.node import Node
@@ -38,7 +43,6 @@ class TwistToTwist(Node):
         # Check for timeouts at 10Hz
         self.timer = self.create_timer(0.1, self.watchdog_callback)
         
-        # Cache a zero-velocity message so we don't have to rebuild it in the loop
         self.zero_msg = Twist() 
         self.get_logger().info("Cmdvel_nav2 relay with watchdog started.")
 

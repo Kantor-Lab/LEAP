@@ -1,35 +1,9 @@
 # leap_desc
+This package contains the meshes and URDFs that describe the physical configuration of the Amiga.
 
-This package is the single source of truth for the physical configuration of the LEAP robot. It contains the URDF/Xacro descriptions, 3D meshes, and the Robot State Publisher launch files required to broadcast the robot's coordinate frames (`/tf`) for both simulation and physical hardware deployments. It is not intended to be used standalone, and should be referenced by other ROS packages only.
+## Notes
+As always, all the source files should have headers at the top explaining what they do and individual notes.
 
-## Directory Structure
+This package isn't really intended to be standalone. I mean there's no point publishing a `/tf` tree if nothing is using it. I think it's currently being launched from `amiga_sensors.launch.py` in `leap_launch`.
 
-```text
-leap_sim/
-├── CMakeLists.txt
-├── package.xml
-├── launch/
-├── urdf/
-├── meshes/
-```
-
-### Subdirectory Breakdown
-
-*   **`launch/`**
-    Contains the launch files.
-*   **`urdf/`**
-    Contains the descriptions of the robot. Xacro files are directly used now, but some corresponding urdf files may also exist (albeit out of date).
-*   **`meshes/`**
-    Contains the 3D visual and collision meshes,  for the robots. It it is primarily referred to by files in the `urdf\` directory.
-
-## Build Instructions
-
-Ensure you are in the root of your ROS 2 workspace, then build the package:
-
-```bash
-colcon build --packages-select leap_desc
-source install/setup.bash
-```
-
-## Developer Notes
-*   The keen observer might notice a `config\` folder. This folder only contains some controller related things that the robot xacro file references. It should eventually be moved to a different leap_control package or something of the like.
+A brief description of `amiga_base.xacro`: `base_link` is the overall describer of the Amiga. I placed it such that it aligns with the center of rotation, but it might not be perfect. `base_footprint` is the same thing except projected to the ground (I think it's used by both `leap_nav` and `leap_icp`). Individual transforms for each of the sensors are also present in this xacro. This xacro is the one used by everything on the physical robot, but the simulator requires further details. That's why this one is called "base" and the one in `leap_sim` extends it.

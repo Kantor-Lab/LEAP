@@ -1,12 +1,9 @@
-#!/usr/bin/env python3
 """
-leap_row_mission: waits for init, drives to the start of a tree-row path via
-navigate_to_pose, then hands off directly to the controller_server's
-follow_path action to run the precomputed spline (bypassing the planner/BT).
-
-Requires row_fitting_lib.py (the pure math/library version of row_fitting.py,
-with the RowPlannerNode / rclpy.init() / timer stuff stripped out) importable
-on PYTHONPATH.
+Temporary-ish node that I used for recording the video. It basically just generates a single
+boustrephodon row path from a hardcoded set of points, then navigates to the start of the row
+and hands off to the controller_server's follow_path action. It is not intended to be a
+general-purpose row-following node, but it does demonstrate the full pipeline from point cloud
+to row path to navigation. 
 """
 
 import math
@@ -42,7 +39,7 @@ class RowMissionNode(Node):
         super().__init__("leap_row_mission")
 
         self.declare_parameter("init_wait_sec", 30.0)
-        self.declare_parameter("offset", 2.0)
+        self.declare_parameter("offset", 0.0)
         self.declare_parameter("frame_id", "map")
         self.declare_parameter("controller_id", "FollowPath")
 
@@ -86,12 +83,18 @@ class RowMissionNode(Node):
     # Row path generation (mirrors row_fitting.py's timer_callback body)
     # ------------------------------------------------------------------
     def generate_row_path(self):
+        # tree_pts = np.array([
+        #     [43, 63], [43, 65], [43, 67], [43, 69], [43, 71], [43, 73],
+        #     [45, 63], [45, 65], [45, 67], [45, 69], [45, 71], [45, 73],
+        #     [47, 63], [47, 65], [47, 67], [47, 69], [47, 71], [47, 73],
+        #     [49, 63], [49, 65], [49, 67], [49, 69], [49, 71], [49, 73],
+        #     [51, 63], [51, 65], [51, 67], [51, 69], [51, 71], [51, 73],
+        # ])
+        # start_point = np.array([44.0, 61.0])
         tree_pts = np.array([
-            [43, 63], [43, 65], [43, 67], [43, 69], [43, 71], [43, 73],
-            [45, 63], [45, 65], [45, 67], [45, 69], [45, 71], [45, 73],
-            [47, 63], [47, 65], [47, 67], [47, 69], [47, 71], [47, 73],
-            [49, 63], [49, 65], [49, 67], [49, 69], [49, 71], [49, 73],
-            [51, 63], [51, 65], [51, 67], [51, 69], [51, 71], [51, 73],
+            [43, 63], [43, 64], [43, 65], [43, 66],
+            [45, 63], [45, 64], [45, 65], [45, 66],
+            [47, 63], [47, 64], [47, 65], [47, 66],
         ])
         start_point = np.array([44.0, 61.0])
         start_heading = np.array([0.0, 1.0])

@@ -1,4 +1,9 @@
-#!/usr/bin/env python3
+"""
+So in order to use wheel odometry in the ekfs, they need to have a covariance measure
+attached. This file just adds that and also a watchdog that sends 0's if it doesn't
+receive anything although that part isn't really doing anything right now (since 
+amiga_control.py subscribes to the raw message before the watchdog).
+"""
 
 import rclpy
 from rclpy.node import Node

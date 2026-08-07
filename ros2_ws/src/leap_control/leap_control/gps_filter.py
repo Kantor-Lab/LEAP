@@ -1,4 +1,23 @@
-#!/usr/bin/env python3
+"""
+This cross-checks incoming GPS against the local (IMU+wheel) EKF to check
+its consistency. If it succeeds, the measurement is allowed to be passed on.
+Originally, it was intended to be passed into the global EKF, but now the goal
+is just to have it be used for reinitializing ICP if it fails.
+
+Design notes:
+- The accept/reject tolerance is sized from GPS epoch noise plus a bound
+    on local-EKF drift growth since the anchor.
+- The tolerance grows with elapsed time since the anchor (bounded local
+    drift really does grow with time) but is capped. Past the cap, the
+    local reference is no longer trustworthy enough to judge anything
+    against, so the anchor is invalidated and a fresh streak is required
+    before GPS is trusted again -- growing the tolerance further would
+    just make the check meaningless instead of lenient.
+- The anchor is never updated on a single lone reading. Promotion to
+    anchor requires a short streak of mutually-consistent consecutive
+    readings, so a single bad epoch arriving right as ICP starts to fail
+    can't become the reference everything else is measured against.
+"""
 
 import math
 
@@ -10,24 +29,6 @@ from diagnostic_msgs.msg import DiagnosticArray, DiagnosticStatus
 
 
 class GpsFilterNode(Node):
-    """Cross-checks incoming GPS against the local (IMU+wheel) EKF before
-    letting it reach the global filter.
-
-    Design notes (see discussion history):
-    - The accept/reject tolerance is sized from GPS epoch noise plus a bound
-      on local-EKF drift growth since the anchor.
-    - The tolerance grows with elapsed time since the anchor (bounded local
-      drift really does grow with time) but is capped. Past the cap, the
-      local reference is no longer trustworthy enough to judge anything
-      against, so the anchor is invalidated and a fresh streak is required
-      before GPS is trusted again -- growing the tolerance further would
-      just make the check meaningless instead of lenient.
-    - The anchor is never updated on a single lone reading. Promotion to
-      anchor requires a short streak of mutually-consistent consecutive
-      readings, so a single bad epoch arriving right as ICP starts to fail
-      can't become the reference everything else is measured against.
-    """
-
     def __init__(self):
         super().__init__('gps_filter')
 

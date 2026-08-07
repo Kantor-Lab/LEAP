@@ -1,6 +1,6 @@
-# Pure math/library functions extracted from row_fitting.py.
-# No rclpy.Node, no timer, no publisher — safe to import from any node
-# (e.g. row_mission_node.py) without side effects.
+"""
+Extracted from Billy's code to generate rows from a set of points.
+"""
 
 from dataclasses import dataclass
 
@@ -21,7 +21,7 @@ def find_rows_ransac(tree_pts: np.ndarray) -> list[Line]:
     max_lines = 100
     max_iters = 10000
     dist_thresh = 0.4
-    min_inliers = 5
+    min_inliers = 3
 
     vor_vert = tree_pts
     row_lines = []

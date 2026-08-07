@@ -12,7 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-#!/usr/bin/env python
+"""
+This file contains the interface between our /cmd_vel and the Amiga itself. I got this
+from Billy who got it from Francisco, who I assume got it from the Amiga github? I'm not
+entirely sure but the code is a little 'suspect.' I haven't touched this stuff too much,
+but I did disable it from publishing odometry because it was pretty garbage. I also added
+a magic number to the angular velocity command because it was the only way I could get the
+Amiga to actually match the /cmd_vel. I think the issue is that the Amiga only uses wheel
+encoders for odometry, which means it has to perfectly configured in the settings to match
+/cmd_vel. However, because our Amiga only has the front wheels, the center of rotation is
+too close to the front wheels making it turn super fast. The long term solution might be
+to see if you can bypass the Amiga's blackbox lower level controller and send CAN commands
+to the wheels directly.
+"""
 
 import can
 import rclpy

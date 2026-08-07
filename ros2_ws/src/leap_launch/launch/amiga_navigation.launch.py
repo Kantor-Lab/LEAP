@@ -23,7 +23,7 @@ def generate_launch_description():
                 launch_arguments={
                     'params_file': nav2_params_path,
                     'use_sim_time': 'False',
-                    'map_yaml_path': map_yaml_path  # <-- Passing the map path down
+                    'map_yaml_path': map_yaml_path
                 }.items()
             )
         ]
